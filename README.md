@@ -25,18 +25,18 @@ http://your-docker-host:8080
 This repo includes a GitHub Actions workflow that publishes the Docker image to GitHub Container Registry:
 
 ```text
-ghcr.io/YOUR_GITHUB_USERNAME/homelab-dashboard:latest
+ghcr.io/BeefyDaddy2510/homelab-dashboard:latest
 ```
 
 After creating a GitHub repository, push this project:
 
 ```bash
-git remote add origin https://github.com/YOUR_GITHUB_USERNAME/homelab-dashboard.git
+git remote add origin https://github.com/BeefyDaddy2510/homelab-dashboard.git
 git branch -M main
 git push -u origin main
 ```
 
-Then edit `compose.ghcr.yml` and replace `YOUR_GITHUB_USERNAME` with your GitHub username or organization.
+The included `compose.ghcr.yml` is already pointed at `ghcr.io/BeefyDaddy2510/homelab-dashboard:latest`.
 
 On your Docker server:
 
