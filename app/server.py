@@ -239,6 +239,47 @@ def delete_service(payload):
     return config
 
 
+def add_group(payload):
+    config = load_services()
+    if not isinstance(config, dict) or "error" in config:
+        config = {"groups": []}
+    find_or_create_group(config, payload.get("name"))
+    write_config(config)
+    return config
+
+
+def rename_group(payload):
+    config = load_services()
+    groups = config.get("groups", [])
+    index = int(payload.get("index"))
+    new_name = str(payload.get("name", "")).strip()
+    if not new_name:
+        raise ValueError("Group name is required.")
+    if any(group.get("name") == new_name for group in groups):
+        raise ValueError("A group with that name already exists.")
+    try:
+        groups[index]["name"] = new_name
+    except (IndexError, TypeError):
+        raise ValueError("Group was not found.")
+    write_config(config)
+    return config
+
+
+def delete_group(payload):
+    config = load_services()
+    groups = config.get("groups", [])
+    index = int(payload.get("index"))
+    try:
+        group = groups[index]
+    except (IndexError, TypeError):
+        raise ValueError("Group was not found.")
+    if group.get("services"):
+        raise ValueError("Only empty groups can be deleted.")
+    del groups[index]
+    write_config(config)
+    return config
+
+
 def load_proxmox_config():
     config = read_json_file(PROXMOX_FILE, {"servers": []})
     if not isinstance(config, dict) or "error" in config:
@@ -717,6 +758,15 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 return
             if parsed.path == "/api/services/delete":
                 json_response(self, delete_service(payload), 200)
+                return
+            if parsed.path == "/api/groups":
+                json_response(self, add_group(payload), 201)
+                return
+            if parsed.path == "/api/groups/update":
+                json_response(self, rename_group(payload), 200)
+                return
+            if parsed.path == "/api/groups/delete":
+                json_response(self, delete_group(payload), 200)
                 return
             if parsed.path == "/api/settings":
                 json_response(self, save_settings(payload), 200)

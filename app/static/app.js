@@ -163,6 +163,40 @@ function renderProxmoxConfig(config) {
     .join("");
 }
 
+function renderGroupConfig(config = state.config) {
+  const container = $("#group-config-list");
+  const groups = config.groups || [];
+  if (!groups.length) {
+    container.innerHTML = `<div class="empty">No groups configured.</div>`;
+    return;
+  }
+
+  container.innerHTML = groups
+    .map((group, index) => `
+      <article class="config-row">
+        <div>
+          <strong>${escapeHtml(group.name || "Group")}</strong>
+          <span>${(group.services || []).length} services</span>
+        </div>
+        <button data-edit-group="${index}" class="small-button">Edit</button>
+      </article>
+    `)
+    .join("");
+}
+
+function populateGroupSelect(selectedGroup = "") {
+  const select = $("#service-group-select");
+  const groups = state.config.groups || [];
+  select.innerHTML = groups
+    .map((group) => `<option value="${escapeHtml(group.name)}">${escapeHtml(group.name)}</option>`)
+    .join("");
+  if (selectedGroup && groups.some((group) => group.name === selectedGroup)) {
+    select.value = selectedGroup;
+  } else if (groups.length) {
+    select.value = groups[0].name;
+  }
+}
+
 async function loadProxmoxConfig() {
   renderProxmoxConfig(await requestJson("/api/proxmox/config"));
 }
@@ -282,6 +316,7 @@ function renderServices(config) {
   setText("#service-count", count);
   setText("#quick-services", count);
   setText("#config-note", `${count} configured`);
+  renderGroupConfig(config);
 }
 
 function renderProxmox(payload) {
@@ -442,29 +477,31 @@ async function loadWeather() {
 }
 
 function serviceFormPayload() {
+  const newGroup = $("#service-group-new").value.trim();
   return {
     name: $("#service-name").value.trim(),
     url: $("#service-url").value.trim(),
     icon: $("#service-icon").value.trim(),
     icon_url: $("#service-icon-url").value.trim(),
-    group: $("#service-group").value.trim() || "Manual",
+    group: newGroup || $("#service-group-select").value || "Manual",
     description: $("#service-description").value.trim(),
   };
 }
 
-function openServiceDialog(entry) {
+function openServiceDialog(entry, defaults = {}) {
   const isEdit = Boolean(entry);
   $("#dialog-title").textContent = isEdit ? "Edit Service" : "Add Service";
   $("#delete-service").style.visibility = isEdit ? "visible" : "hidden";
   $("#service-group-index").value = isEdit ? entry.groupIndex : "";
   $("#service-index").value = isEdit ? entry.serviceIndex : "";
-  $("#service-name").value = isEdit ? entry.service.name || "" : "";
-  $("#service-url").value = isEdit ? entry.service.url || "" : "";
-  $("#service-icon").value = isEdit ? entry.service.icon || "" : "";
-  $("#service-icon-url").value = isEdit ? entry.service.icon_url || "" : "";
+  $("#service-name").value = isEdit ? entry.service.name || "" : defaults.name || "";
+  $("#service-url").value = isEdit ? entry.service.url || "" : defaults.url || "";
+  $("#service-icon").value = isEdit ? entry.service.icon || "" : defaults.icon || "";
+  $("#service-icon-url").value = isEdit ? entry.service.icon_url || "" : defaults.icon_url || "";
   $("#service-icon-file").value = "";
-  $("#service-group").value = isEdit ? entry.group.name || "" : "Manual";
-  $("#service-description").value = isEdit ? entry.service.description || "" : "";
+  populateGroupSelect(isEdit ? entry.group.name || "" : defaults.group || "");
+  $("#service-group-new").value = "";
+  $("#service-description").value = isEdit ? entry.service.description || "" : defaults.description || "";
   $("#service-dialog").showModal();
 }
 
@@ -499,14 +536,52 @@ async function deleteCurrentService() {
   renderServices(config);
 }
 
-async function addDiscoveredService(encoded) {
+function openDiscoveredService(encoded) {
   const service = JSON.parse(decodeURIComponent(encoded));
-  const config = await requestJson("/api/services/discovered", {
+  openServiceDialog(null, {
+    name: service.name || "",
+    url: service.url || "",
+    icon: "scan",
+    description: service.description || "Discovered on local network",
+  });
+}
+
+async function saveGroup(event) {
+  event.preventDefault();
+  const index = $("#group-index").value;
+  const isEdit = index !== "";
+  const endpoint = isEdit ? "/api/groups/update" : "/api/groups";
+  const body = isEdit
+    ? { index, name: $("#group-name").value.trim() }
+    : { name: $("#group-name").value.trim() };
+  const config = await requestJson(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(service),
+    body: JSON.stringify(body),
   });
+  $("#group-dialog").close();
   renderServices(config);
+}
+
+async function deleteCurrentGroup() {
+  const index = $("#group-index").value;
+  if (index === "") return;
+  const config = await requestJson("/api/groups/delete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ index }),
+  });
+  $("#group-dialog").close();
+  renderServices(config);
+}
+
+function openGroupDialog(entry) {
+  const isEdit = Boolean(entry);
+  $("#group-dialog-title").textContent = isEdit ? "Edit Group" : "Add Group";
+  $("#delete-group").style.visibility = isEdit ? "visible" : "hidden";
+  $("#group-index").value = isEdit ? entry.index : "";
+  $("#group-name").value = isEdit ? entry.group.name || "" : "";
+  $("#group-dialog").showModal();
 }
 
 async function loadConfig() {
@@ -565,15 +640,7 @@ document.addEventListener("click", (event) => {
 
   const addButton = event.target.closest("[data-add-service]");
   if (addButton) {
-    addButton.disabled = true;
-    addDiscoveredService(addButton.dataset.addService)
-      .then(() => {
-        addButton.textContent = "OK";
-      })
-      .catch((error) => {
-        addButton.textContent = "!";
-        addButton.title = error.message;
-      });
+    openDiscoveredService(addButton.dataset.addService);
     return;
   }
 
@@ -593,16 +660,28 @@ document.addEventListener("click", (event) => {
     const index = Number(proxmoxEditButton.dataset.editProxmox);
     const server = state.proxmoxConfig.servers?.[index];
     if (server) openProxmoxDialog({ server, index });
+    return;
+  }
+
+  const groupEditButton = event.target.closest("[data-edit-group]");
+  if (groupEditButton) {
+    const index = Number(groupEditButton.dataset.editGroup);
+    const group = state.config.groups?.[index];
+    if (group) openGroupDialog({ group, index });
   }
 });
 
 $("#add-service").addEventListener("click", () => openServiceDialog());
+$("#add-group").addEventListener("click", () => openGroupDialog());
 $("#add-proxmox").addEventListener("click", () => openProxmoxDialog());
 $("#cancel-dialog").addEventListener("click", () => $("#service-dialog").close());
+$("#cancel-group-dialog").addEventListener("click", () => $("#group-dialog").close());
 $("#cancel-proxmox-dialog").addEventListener("click", () => $("#proxmox-dialog").close());
 $("#delete-service").addEventListener("click", deleteCurrentService);
+$("#delete-group").addEventListener("click", deleteCurrentGroup);
 $("#delete-proxmox").addEventListener("click", deleteCurrentProxmoxServer);
 $("#service-form").addEventListener("submit", saveService);
+$("#group-form").addEventListener("submit", saveGroup);
 $("#proxmox-form").addEventListener("submit", saveProxmoxServer);
 $("#service-icon-file").addEventListener("change", readIconFile);
 $("#service-search").addEventListener("input", () => renderServices(state.config));

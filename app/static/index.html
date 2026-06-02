@@ -161,6 +161,17 @@
         <section class="panel settings-panel">
           <div class="panel-title-row">
             <div>
+              <span class="panel-label">Services</span>
+              <h1>App Groups</h1>
+            </div>
+            <button id="add-group" class="primary">Add Group</button>
+          </div>
+          <div id="group-config-list" class="config-list"></div>
+        </section>
+
+        <section class="panel settings-panel">
+          <div class="panel-title-row">
+            <div>
               <span class="panel-label">Hosts</span>
               <h1>Proxmox Servers</h1>
             </div>
@@ -201,7 +212,11 @@
         </label>
         <label>
           <span>Group</span>
-          <input id="service-group" placeholder="Apps" />
+          <select id="service-group-select"></select>
+        </label>
+        <label>
+          <span>New group</span>
+          <input id="service-group-new" placeholder="Type a new group name" />
         </label>
         <label>
           <span>Description</span>
@@ -211,6 +226,26 @@
           <button id="delete-service" class="danger" type="button">Delete</button>
           <span></span>
           <button value="cancel" type="button" id="cancel-dialog">Cancel</button>
+          <button class="primary" type="submit">Save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="group-dialog" class="dialog">
+      <form id="group-form" method="dialog">
+        <div class="dialog-head">
+          <h2 id="group-dialog-title">Add Group</h2>
+          <button value="cancel" class="square-button" title="Close">x</button>
+        </div>
+        <input type="hidden" id="group-index" />
+        <label>
+          <span>Name</span>
+          <input id="group-name" required placeholder="Apps" />
+        </label>
+        <div class="dialog-actions">
+          <button id="delete-group" class="danger" type="button">Delete</button>
+          <span></span>
+          <button value="cancel" type="button" id="cancel-group-dialog">Cancel</button>
           <button class="primary" type="submit">Save</button>
         </div>
       </form>

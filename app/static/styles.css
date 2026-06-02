@@ -140,6 +140,10 @@ label select {
   padding: 0 12px;
 }
 
+label select {
+  appearance: none;
+}
+
 label input[type="color"] {
   padding: 4px;
 }
