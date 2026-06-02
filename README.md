@@ -1,5 +1,7 @@
 # Homelab Dashboard
 
+Simple Homelab Dashboard for management with auto-discovery of services.
+
 A lightweight Docker-deployable homelab dashboard with:
 
 - Service launch groups from a mounted JSON config
