@@ -30,6 +30,12 @@ This repo includes a GitHub Actions workflow that publishes the Docker image to 
 ghcr.io/BeefyDaddy2510/homelab-dashboard:latest
 ```
 
+After the first successful workflow run, open the package on GitHub and make sure its visibility is public if you want Portainer to pull it without registry credentials:
+
+```text
+GitHub repo -> Packages -> homelab-dashboard -> Package settings -> Change visibility -> Public
+```
+
 After creating a GitHub repository, push this project:
 
 ```bash
@@ -40,11 +46,26 @@ git push -u origin main
 
 The included `compose.ghcr.yml` is already pointed at `ghcr.io/BeefyDaddy2510/homelab-dashboard:latest`.
 
-On your Docker server:
+## Portainer Compose
 
-```bash
-docker compose -f compose.ghcr.yml pull
-docker compose -f compose.ghcr.yml up -d
+In Portainer, create a stack with this compose file:
+
+```yaml
+services:
+  homelab-dashboard:
+    image: ghcr.io/BeefyDaddy2510/homelab-dashboard:latest
+    container_name: homelab-dashboard
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - /opt/homelab-dashboard/config:/config
+    environment:
+      DEFAULT_CIDR: "192.168.1.0/24"
+      PROXMOX_URL: "https://proxmox.local:8006"
+      PROXMOX_TOKEN_ID: "root@pam!dashboard"
+      PROXMOX_TOKEN_SECRET: "replace-me"
+      PROXMOX_VERIFY_SSL: "false"
 ```
 
 Future updates are:
@@ -58,8 +79,25 @@ git push
 Then on the server:
 
 ```bash
-docker compose -f compose.ghcr.yml pull
-docker compose -f compose.ghcr.yml up -d
+curl -fsSL https://raw.githubusercontent.com/BeefyDaddy2510/homelab-dashboard/main/scripts/refresh-server.sh | sh
+```
+
+The refresh script expects your server app directory to be:
+
+```text
+/opt/homelab-dashboard/
+```
+
+It expects a compose file at:
+
+```text
+/opt/homelab-dashboard/compose.yml
+```
+
+If you use a different path:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/BeefyDaddy2510/homelab-dashboard/main/scripts/refresh-server.sh | APP_DIR=/different/path sh
 ```
 
 ## Configure Services
