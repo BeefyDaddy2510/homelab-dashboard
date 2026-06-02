@@ -9,6 +9,7 @@ services:
       - ./config:/config
     environment:
       DEFAULT_CIDR: "192.168.1.0/24"
+      PROXMOX_NAME: "Main"
       PROXMOX_URL: "https://proxmox.local:8006"
       PROXMOX_TOKEN_ID: "root@pam!dashboard"
       PROXMOX_TOKEN_SECRET: "replace-me"

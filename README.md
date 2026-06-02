@@ -137,6 +137,7 @@ Create a Proxmox API token and set these environment variables in `compose.yml`:
 
 ```yaml
 environment:
+  PROXMOX_NAME: "Main"
   PROXMOX_URL: "https://proxmox.local:8006"
   PROXMOX_TOKEN_ID: "root@pam!dashboard"
   PROXMOX_TOKEN_SECRET: "replace-me"
@@ -144,6 +145,25 @@ environment:
 ```
 
 For a least-privilege token, grant read-only access needed for node and guest status, such as `PVEAuditor` at `/`.
+
+Multiple Proxmox servers are supported with numbered variables:
+
+```yaml
+environment:
+  PROXMOX_1_NAME: "Main"
+  PROXMOX_1_URL: "https://proxmox-main.local:8006"
+  PROXMOX_1_TOKEN_ID: "root@pam!dashboard"
+  PROXMOX_1_TOKEN_SECRET: "replace-me"
+  PROXMOX_1_VERIFY_SSL: "false"
+
+  PROXMOX_2_NAME: "Lab"
+  PROXMOX_2_URL: "https://proxmox-lab.local:8006"
+  PROXMOX_2_TOKEN_ID: "root@pam!dashboard"
+  PROXMOX_2_TOKEN_SECRET: "replace-me"
+  PROXMOX_2_VERIFY_SSL: "false"
+```
+
+The older single-server `PROXMOX_URL` variables still work.
 
 ## Network Discovery
 

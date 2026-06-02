@@ -339,14 +339,62 @@ def run_discovery(cidr, ports, timeout):
     }
 
 
-def proxmox_request(path):
-    base_url = os.environ.get("PROXMOX_URL", "").rstrip("/")
-    token_id = os.environ.get("PROXMOX_TOKEN_ID", "")
-    token_secret = os.environ.get("PROXMOX_TOKEN_SECRET", "")
-    verify_ssl = os.environ.get("PROXMOX_VERIFY_SSL", "true").lower() == "true"
+def proxmox_servers():
+    raw = os.environ.get("PROXMOX_SERVERS", "").strip()
+    if raw:
+        servers = json.loads(raw)
+        if not isinstance(servers, list):
+            raise RuntimeError("PROXMOX_SERVERS must be a JSON array.")
+        return [
+            {
+                "name": item.get("name") or urllib.parse.urlparse(item.get("url", "")).hostname or "Proxmox",
+                "url": item.get("url", "").rstrip("/"),
+                "token_id": item.get("token_id", ""),
+                "token_secret": item.get("token_secret", ""),
+                "verify_ssl": str(item.get("verify_ssl", "true")).lower() == "true",
+            }
+            for item in servers
+        ]
+
+    indexed = []
+    for index in range(1, 11):
+        prefix = f"PROXMOX_{index}_"
+        url = os.environ.get(f"{prefix}URL", "").rstrip("/")
+        if not url:
+            continue
+        indexed.append(
+            {
+                "name": os.environ.get(f"{prefix}NAME")
+                or urllib.parse.urlparse(url).hostname
+                or f"Proxmox {index}",
+                "url": url,
+                "token_id": os.environ.get(f"{prefix}TOKEN_ID", ""),
+                "token_secret": os.environ.get(f"{prefix}TOKEN_SECRET", ""),
+                "verify_ssl": os.environ.get(f"{prefix}VERIFY_SSL", "true").lower() == "true",
+            }
+        )
+    if indexed:
+        return indexed
+
+    return [
+        {
+            "name": os.environ.get("PROXMOX_NAME", "Proxmox"),
+            "url": os.environ.get("PROXMOX_URL", "").rstrip("/"),
+            "token_id": os.environ.get("PROXMOX_TOKEN_ID", ""),
+            "token_secret": os.environ.get("PROXMOX_TOKEN_SECRET", ""),
+            "verify_ssl": os.environ.get("PROXMOX_VERIFY_SSL", "true").lower() == "true",
+        }
+    ]
+
+
+def proxmox_request(server, path):
+    base_url = server.get("url", "").rstrip("/")
+    token_id = server.get("token_id", "")
+    token_secret = server.get("token_secret", "")
+    verify_ssl = server.get("verify_ssl", True)
 
     if not base_url or not token_id or not token_secret:
-        raise RuntimeError("Set PROXMOX_URL, PROXMOX_TOKEN_ID, and PROXMOX_TOKEN_SECRET.")
+        raise RuntimeError("Set Proxmox URL, token ID, and token secret.")
 
     headers = {"Authorization": f"PVEAPIToken={token_id}={token_secret}"}
     req = urllib.request.Request(f"{base_url}/api2/json{path}", headers=headers)
@@ -357,42 +405,66 @@ def proxmox_request(path):
 
 
 def proxmox_summary():
-    nodes = proxmox_request("/nodes")
-    try:
-        resources = proxmox_request("/cluster/resources")
-    except Exception:
-        resources = []
+    clusters = []
+    all_nodes = []
+    errors = []
 
-    enriched = []
-    for node in nodes:
-        name = node.get("node")
-        item = dict(node)
-        item["vms"] = [
-            resource
-            for resource in resources
-            if resource.get("type") == "qemu" and resource.get("node") == name
-        ]
-        item["containers"] = [
-            resource
-            for resource in resources
-            if resource.get("type") == "lxc" and resource.get("node") == name
-        ]
+    for server in proxmox_servers():
+        cluster = {"name": server["name"], "url": server["url"], "nodes": []}
         try:
-            item["status_detail"] = proxmox_request(f"/nodes/{urllib.parse.quote(name)}/status")
+            nodes = proxmox_request(server, "/nodes")
         except Exception as exc:
-            item["detail_error"] = str(exc)
+            cluster["error"] = str(exc)
+            errors.append({"server": server["name"], "error": str(exc)})
+            clusters.append(cluster)
+            continue
 
         try:
-            item["vms"] = proxmox_request(f"/nodes/{urllib.parse.quote(name)}/qemu")
-        except Exception as exc:
-            item["vm_error"] = str(exc)
+            resources = proxmox_request(server, "/cluster/resources")
+        except Exception:
+            resources = []
 
-        try:
-            item["containers"] = proxmox_request(f"/nodes/{urllib.parse.quote(name)}/lxc")
-        except Exception as exc:
-            item["container_error"] = str(exc)
-        enriched.append(item)
-    return {"nodes": enriched}
+        enriched = []
+        for node in nodes:
+            name = node.get("node")
+            item = dict(node)
+            item["server"] = server["name"]
+            item["server_url"] = server["url"]
+            item["vms"] = [
+                resource
+                for resource in resources
+                if resource.get("type") == "qemu" and resource.get("node") == name
+            ]
+            item["containers"] = [
+                resource
+                for resource in resources
+                if resource.get("type") == "lxc" and resource.get("node") == name
+            ]
+            try:
+                item["status_detail"] = proxmox_request(
+                    server, f"/nodes/{urllib.parse.quote(name)}/status"
+                )
+            except Exception as exc:
+                item["detail_error"] = str(exc)
+
+            try:
+                item["vms"] = proxmox_request(server, f"/nodes/{urllib.parse.quote(name)}/qemu")
+            except Exception as exc:
+                item["vm_error"] = str(exc)
+
+            try:
+                item["containers"] = proxmox_request(
+                    server, f"/nodes/{urllib.parse.quote(name)}/lxc"
+                )
+            except Exception as exc:
+                item["container_error"] = str(exc)
+            enriched.append(item)
+            all_nodes.append(item)
+
+        cluster["nodes"] = enriched
+        clusters.append(cluster)
+
+    return {"clusters": clusters, "nodes": all_nodes, "errors": errors}
 
 
 class DashboardHandler(SimpleHTTPRequestHandler):

@@ -1,6 +1,8 @@
 const state = {
   config: { groups: [] },
   settings: {},
+  discoveryHosts: 0,
+  proxmoxNodes: 0,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -37,6 +39,10 @@ function percent(value) {
 
 function firstNumber(...values) {
   return values.find((value) => Number.isFinite(value));
+}
+
+function updateHostCount() {
+  setText("#host-count", state.discoveryHosts + state.proxmoxNodes);
 }
 
 function iconText(service) {
@@ -163,15 +169,44 @@ function renderServices(config) {
 function renderProxmox(payload) {
   const container = $("#proxmox-grid");
   const nodes = payload?.nodes || [];
+  const clusters = payload?.clusters || [{ name: "Proxmox", nodes }];
+  state.proxmoxNodes = nodes.length;
   setText("#node-count", nodes.length || "-");
+  updateHostCount();
 
-  if (!nodes.length) {
+  if (!nodes.length && !clusters.some((cluster) => cluster.error)) {
     container.innerHTML = `<div class="empty">No Proxmox nodes returned.</div>`;
     return;
   }
 
-  container.innerHTML = nodes
-    .map((node) => {
+  container.innerHTML = clusters
+    .map((cluster) => {
+      if (cluster.error) {
+        return `
+          <section class="cluster-card">
+            <div class="cluster-title">
+              <strong>${escapeHtml(cluster.name || "Proxmox")}</strong>
+              <span class="badge warn">error</span>
+            </div>
+            <div class="error">${escapeHtml(cluster.error)}</div>
+          </section>
+        `;
+      }
+
+      return `
+        <section class="cluster-card">
+          <div class="cluster-title">
+            <strong>${escapeHtml(cluster.name || "Proxmox")}</strong>
+            <span class="muted">${(cluster.nodes || []).length} nodes</span>
+          </div>
+          ${(cluster.nodes || []).map(renderProxmoxNode).join("")}
+        </section>
+      `;
+    })
+    .join("");
+}
+
+function renderProxmoxNode(node) {
       const detail = node.status_detail || {};
       const memoryUsed = firstNumber(detail.memory?.used, node.mem);
       const memoryTotal = firstNumber(detail.memory?.total, node.maxmem);
@@ -211,14 +246,13 @@ function renderProxmox(payload) {
           ${detailWarning}
         </article>
       `;
-    })
-    .join("");
 }
 
 function renderScan(payload) {
   const container = $("#scan-results");
   const hosts = payload.hosts || [];
-  setText("#host-count", hosts.length);
+  state.discoveryHosts = hosts.length;
+  updateHostCount();
   setText("#last-scan", `${hosts.length} hosts in ${Math.round(payload.duration_ms / 1000)}s`);
 
   if (!hosts.length) {

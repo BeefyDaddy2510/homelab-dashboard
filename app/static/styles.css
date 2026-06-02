@@ -261,6 +261,23 @@ h2 {
   margin-top: 12px;
 }
 
+.cluster-card {
+  display: grid;
+  gap: 12px;
+}
+
+.cluster-card + .cluster-card {
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.cluster-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .node-card {
   display: grid;
   gap: 12px;
