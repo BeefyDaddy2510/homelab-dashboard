@@ -131,6 +131,10 @@ The container mounts this directory as `/config`, so edits survive rebuilds.
 
 Service icons can be short text, an image URL, or an uploaded local image from the edit dialog. Uploaded icons are stored in `services.json` as data URLs, so small square PNG/WebP/SVG icons are best.
 
+## Appearance And Weather
+
+Use `Settings -> Appearance` to change theme, accent color, background, panel opacity, and weather location. Weather uses the public Open-Meteo API from the server side; if the Docker host cannot reach the internet, the clock card will show weather unavailable.
+
 ## Proxmox API
 
 Proxmox servers can be managed from the UI:

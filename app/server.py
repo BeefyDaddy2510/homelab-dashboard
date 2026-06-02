@@ -73,6 +73,7 @@ def load_settings():
         "background": "/assets/space-bg.png",
         "accent": "#5ee0b5",
         "panel_opacity": 82,
+        "weather_location": "",
     }
     settings = read_json_file(SETTINGS_FILE, fallback)
     if not isinstance(settings, dict) or "error" in settings:
@@ -89,6 +90,7 @@ def save_settings(payload):
 
     accent = str(payload.get("accent", settings["accent"])).strip() or settings["accent"]
     background = str(payload.get("background", settings["background"])).strip()
+    weather_location = str(payload.get("weather_location", settings["weather_location"])).strip()
     panel_opacity = int(payload.get("panel_opacity", settings["panel_opacity"]))
     panel_opacity = max(35, min(95, panel_opacity))
 
@@ -97,6 +99,7 @@ def save_settings(payload):
         "background": background,
         "accent": accent,
         "panel_opacity": panel_opacity,
+        "weather_location": weather_location,
     }
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     with SETTINGS_FILE.open("w", encoding="utf-8") as handle:
@@ -565,6 +568,78 @@ def proxmox_summary():
     return {"clusters": clusters, "nodes": all_nodes, "errors": errors}
 
 
+def weather_code_label(code):
+    labels = {
+        0: "Clear",
+        1: "Mainly clear",
+        2: "Partly cloudy",
+        3: "Overcast",
+        45: "Fog",
+        48: "Rime fog",
+        51: "Light drizzle",
+        53: "Drizzle",
+        55: "Heavy drizzle",
+        61: "Light rain",
+        63: "Rain",
+        65: "Heavy rain",
+        71: "Light snow",
+        73: "Snow",
+        75: "Heavy snow",
+        80: "Rain showers",
+        81: "Rain showers",
+        82: "Heavy showers",
+        95: "Thunderstorm",
+    }
+    return labels.get(code, "Weather")
+
+
+def weather_summary():
+    location = load_settings().get("weather_location", "").strip()
+    if not location:
+        return {"configured": False, "message": "Set a weather location in Settings."}
+
+    geocode_url = (
+        "https://geocoding-api.open-meteo.com/v1/search?"
+        + urllib.parse.urlencode({"name": location, "count": 1, "language": "en", "format": "json"})
+    )
+    with urllib.request.urlopen(geocode_url, timeout=8) as resp:
+        geocode = json.loads(resp.read().decode("utf-8"))
+
+    results = geocode.get("results") or []
+    if not results:
+        raise RuntimeError(f"Weather location was not found: {location}")
+
+    place = results[0]
+    forecast_url = (
+        "https://api.open-meteo.com/v1/forecast?"
+        + urllib.parse.urlencode(
+            {
+                "latitude": place["latitude"],
+                "longitude": place["longitude"],
+                "current": "temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m",
+                "timezone": "auto",
+            }
+        )
+    )
+    with urllib.request.urlopen(forecast_url, timeout=8) as resp:
+        forecast = json.loads(resp.read().decode("utf-8"))
+
+    current = forecast.get("current", {})
+    units = forecast.get("current_units", {})
+    code = current.get("weather_code")
+    return {
+        "configured": True,
+        "location": place.get("name", location),
+        "country": place.get("country", ""),
+        "temperature": current.get("temperature_2m"),
+        "temperature_unit": units.get("temperature_2m", "°C"),
+        "humidity": current.get("relative_humidity_2m"),
+        "wind_speed": current.get("wind_speed_10m"),
+        "wind_speed_unit": units.get("wind_speed_10m", "km/h"),
+        "condition": weather_code_label(code),
+    }
+
+
 class DashboardHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(STATIC_DIR), **kwargs)
@@ -607,6 +682,13 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 json_response(self, proxmox_summary())
             except urllib.error.HTTPError as exc:
                 error_response(self, f"Proxmox API error: {exc.code} {exc.reason}", exc.code)
+            except Exception as exc:
+                error_response(self, str(exc), 503)
+            return
+
+        if parsed.path == "/api/weather":
+            try:
+                json_response(self, weather_summary())
             except Exception as exc:
                 error_response(self, str(exc), 503)
             return

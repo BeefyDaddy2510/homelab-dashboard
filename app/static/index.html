@@ -47,12 +47,20 @@
               <span class="panel-label">Virtualization</span>
               <button id="refresh-proxmox" class="small-button">Refresh</button>
             </div>
+            <select id="proxmox-node-select" class="node-select" aria-label="Select Proxmox node"></select>
             <div id="proxmox-grid" class="node-grid"></div>
           </article>
 
           <article class="panel clock-panel">
-            <strong id="clock-time">--:--</strong>
-            <span id="clock-date">Loading</span>
+            <div class="clock-block">
+              <strong id="clock-time">--:--</strong>
+              <span id="clock-date">Loading</span>
+            </div>
+            <div class="weather-block">
+              <span id="weather-temp">--</span>
+              <strong id="weather-condition">Weather</strong>
+              <small id="weather-location">Set location in Settings</small>
+            </div>
             <small id="api-status">Connecting</small>
           </article>
         </section>
@@ -122,6 +130,10 @@
             <label class="wide">
               <span>Background URL</span>
               <input id="setting-background" placeholder="/assets/space-bg.png" />
+            </label>
+            <label class="wide">
+              <span>Weather location</span>
+              <input id="setting-weather-location" placeholder="Prague" />
             </label>
           </div>
         </section>

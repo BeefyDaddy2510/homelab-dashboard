@@ -4,6 +4,8 @@ const state = {
   proxmoxConfig: { servers: [] },
   discoveryHosts: 0,
   proxmoxNodes: 0,
+  proxmoxNodeOptions: [],
+  selectedProxmoxKey: "",
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -86,6 +88,7 @@ function applySettings(settings) {
   $("#setting-accent").value = state.settings.accent || "#5ee0b5";
   $("#setting-panel-opacity").value = state.settings.panel_opacity || 82;
   $("#setting-background").value = background;
+  $("#setting-weather-location").value = state.settings.weather_location || "";
 }
 
 async function loadSettings() {
@@ -101,9 +104,11 @@ async function saveSettings() {
       accent: $("#setting-accent").value,
       panel_opacity: $("#setting-panel-opacity").value,
       background: $("#setting-background").value.trim(),
+      weather_location: $("#setting-weather-location").value.trim(),
     }),
   });
   applySettings(settings);
+  loadWeather();
 }
 
 function renderProxmoxConfig(config) {
@@ -258,40 +263,50 @@ function renderProxmox(payload) {
   const container = $("#proxmox-grid");
   const nodes = payload?.nodes || [];
   const clusters = payload?.clusters || [{ name: "Proxmox", nodes }];
+  const select = $("#proxmox-node-select");
   state.proxmoxNodes = nodes.length;
   setText("#node-count", nodes.length || "-");
   updateHostCount();
 
   if (!nodes.length && !clusters.some((cluster) => cluster.error)) {
+    select.innerHTML = `<option>No nodes available</option>`;
     container.innerHTML = `<div class="empty">No Proxmox nodes returned.</div>`;
     return;
   }
 
-  container.innerHTML = clusters
-    .map((cluster) => {
-      if (cluster.error) {
-        return `
-          <section class="cluster-card">
-            <div class="cluster-title">
-              <strong>${escapeHtml(cluster.name || "Proxmox")}</strong>
-              <span class="badge warn">error</span>
-            </div>
-            <div class="error">${escapeHtml(cluster.error)}</div>
-          </section>
-        `;
-      }
+  state.proxmoxNodeOptions = clusters.flatMap((cluster, clusterIndex) =>
+    (cluster.nodes || []).map((node, nodeIndex) => ({
+      key: `${clusterIndex}:${nodeIndex}:${cluster.name}:${node.node}`,
+      label: `${cluster.name || "Proxmox"} / ${node.node || "Node"}`,
+      node,
+    })),
+  );
 
-      return `
-        <section class="cluster-card">
-          <div class="cluster-title">
-            <strong>${escapeHtml(cluster.name || "Proxmox")}</strong>
-            <span class="muted">${(cluster.nodes || []).length} nodes</span>
-          </div>
-          ${(cluster.nodes || []).map(renderProxmoxNode).join("")}
-        </section>
-      `;
-    })
+  select.innerHTML = state.proxmoxNodeOptions
+    .map((option) => `<option value="${escapeHtml(option.key)}">${escapeHtml(option.label)}</option>`)
     .join("");
+
+  const hasSelected = state.proxmoxNodeOptions.some((option) => option.key === state.selectedProxmoxKey);
+  state.selectedProxmoxKey = hasSelected ? state.selectedProxmoxKey : state.proxmoxNodeOptions[0]?.key || "";
+  select.value = state.selectedProxmoxKey;
+
+  if (state.selectedProxmoxKey) {
+    select.disabled = false;
+    renderSelectedProxmoxNode();
+    return;
+  }
+
+  select.disabled = true;
+  select.innerHTML = `<option>No nodes available</option>`;
+  const errors = clusters.filter((cluster) => cluster.error);
+  container.innerHTML = errors.length
+    ? errors.map((cluster) => `<div class="error">${escapeHtml(cluster.name)}: ${escapeHtml(cluster.error)}</div>`).join("")
+    : `<div class="empty">No Proxmox nodes returned.</div>`;
+}
+
+function renderSelectedProxmoxNode() {
+  const option = state.proxmoxNodeOptions.find((item) => item.key === state.selectedProxmoxKey);
+  $("#proxmox-grid").innerHTML = option ? renderProxmoxNode(option.node) : `<div class="empty">Select a node.</div>`;
 }
 
 function renderProxmoxNode(node) {
@@ -388,6 +403,30 @@ function updateClock() {
     "#clock-date",
     now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" }),
   );
+}
+
+async function loadWeather() {
+  try {
+    const weather = await requestJson("/api/weather");
+    if (!weather.configured) {
+      setText("#weather-temp", "--");
+      setText("#weather-condition", "Weather");
+      setText("#weather-location", weather.message || "Set location in Settings");
+      return;
+    }
+    setText("#weather-temp", `${Math.round(weather.temperature)}${weather.temperature_unit || "°C"}`);
+    setText("#weather-condition", weather.condition || "Weather");
+    const details = [
+      [weather.location, weather.country].filter(Boolean).join(", "),
+      Number.isFinite(weather.humidity) ? `${weather.humidity}% humidity` : "",
+      Number.isFinite(weather.wind_speed) ? `${Math.round(weather.wind_speed)} ${weather.wind_speed_unit || ""} wind` : "",
+    ].filter(Boolean);
+    setText("#weather-location", details.join(" / "));
+  } catch (error) {
+    setText("#weather-temp", "--");
+    setText("#weather-condition", "Weather unavailable");
+    setText("#weather-location", error.message);
+  }
 }
 
 function serviceFormPayload() {
@@ -559,14 +598,19 @@ $("#scan-form").addEventListener("submit", runScan);
 $("#refresh-config").addEventListener("click", loadConfig);
 $("#refresh-proxmox").addEventListener("click", loadProxmox);
 $("#save-settings").addEventListener("click", saveSettings);
+$("#proxmox-node-select").addEventListener("change", (event) => {
+  state.selectedProxmoxKey = event.target.value;
+  renderSelectedProxmoxNode();
+});
 
-["#setting-theme", "#setting-accent", "#setting-panel-opacity", "#setting-background"].forEach((selector) => {
+["#setting-theme", "#setting-accent", "#setting-panel-opacity", "#setting-background", "#setting-weather-location"].forEach((selector) => {
   $(selector).addEventListener("input", () => {
     applySettings({
       theme: $("#setting-theme").value,
       accent: $("#setting-accent").value,
       panel_opacity: $("#setting-panel-opacity").value,
       background: $("#setting-background").value.trim(),
+      weather_location: $("#setting-weather-location").value.trim(),
     });
   });
 });
@@ -577,3 +621,4 @@ loadSettings();
 loadProxmoxConfig();
 loadConfig();
 loadProxmox();
+loadWeather();

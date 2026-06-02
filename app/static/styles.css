@@ -190,6 +190,7 @@ label input[type="range"] {
 .summary-grid {
   display: grid;
   grid-template-columns: minmax(260px, 0.9fr) minmax(380px, 1.4fr) minmax(250px, 0.8fr);
+  align-items: start;
   gap: 12px;
   margin-bottom: 28px;
 }
@@ -208,6 +209,12 @@ label input[type="range"] {
 .discovery-panel,
 .settings-panel {
   padding: 18px;
+}
+
+.summary-panel,
+.proxmox-panel,
+.clock-panel {
+  min-height: 248px;
 }
 
 .summary-row {
@@ -259,6 +266,17 @@ h2 {
   display: grid;
   gap: 12px;
   margin-top: 12px;
+}
+
+.node-select {
+  width: 100%;
+  min-height: 38px;
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(5, 8, 9, 0.72);
+  color: var(--text);
+  padding: 0 10px;
 }
 
 .cluster-card {
@@ -329,18 +347,42 @@ h2 {
 
 .clock-panel {
   display: grid;
-  place-items: center;
+  align-content: space-between;
+  gap: 20px;
   text-align: center;
 }
 
-.clock-panel strong {
+.clock-block {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.clock-block strong {
   font-size: clamp(34px, 4vw, 48px);
   line-height: 1;
 }
 
-.clock-panel span,
-.clock-panel small {
+.clock-block span,
+.clock-panel small,
+.weather-block small {
   color: var(--muted);
+}
+
+.weather-block {
+  display: grid;
+  gap: 6px;
+}
+
+.weather-block span {
+  color: var(--accent);
+  font-size: 28px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.weather-block strong {
+  font-size: 15px;
 }
 
 .services-section {
