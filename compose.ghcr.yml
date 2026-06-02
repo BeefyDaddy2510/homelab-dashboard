@@ -1,6 +1,6 @@
 services:
   homelab-dashboard:
-    image: ghcr.io/BeefyDaddy2510/homelab-dashboard:latest
+    image: ghcr.io/beefydaddy2510/homelab-dashboard:latest
     container_name: homelab-dashboard
     restart: unless-stopped
     ports:

@@ -27,7 +27,7 @@ http://your-docker-host:8080
 This repo includes a GitHub Actions workflow that publishes the Docker image to GitHub Container Registry:
 
 ```text
-ghcr.io/BeefyDaddy2510/homelab-dashboard:latest
+ghcr.io/beefydaddy2510/homelab-dashboard:latest
 ```
 
 After the first successful workflow run, open the package on GitHub and make sure its visibility is public if you want Portainer to pull it without registry credentials:
@@ -35,6 +35,11 @@ After the first successful workflow run, open the package on GitHub and make sur
 ```text
 GitHub repo -> Packages -> homelab-dashboard -> Package settings -> Change visibility -> Public
 ```
+
+If Portainer shows `denied denied`, check both of these:
+
+- The image name is fully lowercase: `ghcr.io/beefydaddy2510/homelab-dashboard:latest`
+- The GHCR package is public, or Portainer has a GitHub registry credential with `read:packages`
 
 After creating a GitHub repository, push this project:
 
@@ -44,7 +49,7 @@ git branch -M main
 git push -u origin main
 ```
 
-The included `compose.ghcr.yml` is already pointed at `ghcr.io/BeefyDaddy2510/homelab-dashboard:latest`.
+The included `compose.ghcr.yml` is already pointed at `ghcr.io/beefydaddy2510/homelab-dashboard:latest`.
 
 ## Portainer Compose
 
@@ -53,7 +58,7 @@ In Portainer, create a stack with this compose file:
 ```yaml
 services:
   homelab-dashboard:
-    image: ghcr.io/BeefyDaddy2510/homelab-dashboard:latest
+    image: ghcr.io/beefydaddy2510/homelab-dashboard:latest
     container_name: homelab-dashboard
     restart: unless-stopped
     ports:
