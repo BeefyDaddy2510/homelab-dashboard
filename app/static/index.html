@@ -3,76 +3,76 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Homelab Dashboard</title>
+    <title>Homepage Dash</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <div class="app">
       <header class="topbar">
-        <a class="brand" href="#services" aria-label="Homelab Dashboard">
-          <span class="brand-mark"></span>
-          <span>LAB DASH</span>
+        <a class="brand" href="#dashboard" data-view-link="dashboard" aria-label="Homepage Dash">
+          <span class="brand-mark">H</span>
+          <span>Homepage Dash</span>
         </a>
+
         <label class="search">
-          <span>Search</span>
-          <input id="service-search" placeholder="Search..." autocomplete="off" />
+          <span>Search services</span>
+          <input id="service-search" placeholder="Search services..." autocomplete="off" />
         </label>
+
+        <nav class="nav">
+          <button class="nav-button active" data-view-link="dashboard">Dashboard</button>
+          <button class="nav-button" data-view-link="settings">Settings</button>
+        </nav>
+
         <div class="top-actions">
-          <button id="add-service" class="icon-button" title="Add service">+</button>
-          <button id="refresh-config" class="icon-button" title="Refresh services">R</button>
+          <button id="add-service" class="square-button" title="Add service">+</button>
+          <button id="refresh-config" class="square-button" title="Refresh services">R</button>
         </div>
       </header>
 
-      <main class="dashboard">
-        <section class="hero-grid" aria-label="Dashboard summary">
-          <article class="glass-card weather-card">
-            <div class="mini-title">Local Network</div>
-            <div class="weather-row">
-              <div>
-                <strong id="service-count">0</strong>
-                <span>Services</span>
-              </div>
-              <div>
-                <strong id="host-count">0</strong>
-                <span>Hosts</span>
-              </div>
-              <div>
-                <strong id="node-count">-</strong>
-                <span>Nodes</span>
-              </div>
+      <main class="dashboard view active" id="view-dashboard">
+        <section class="summary-grid" aria-label="Dashboard summary">
+          <article class="panel summary-panel">
+            <span class="panel-label">Local Network</span>
+            <div class="summary-row">
+              <div><strong id="service-count">0</strong><span>Services</span></div>
+              <div><strong id="host-count">0</strong><span>Hosts</span></div>
+              <div><strong id="node-count">-</strong><span>Nodes</span></div>
             </div>
           </article>
 
-          <article class="glass-card proxmox-card" id="proxmox">
-            <div class="panel-head">
-              <span class="mini-title">Virtualization</span>
-              <button id="refresh-proxmox" class="tiny-button">Refresh</button>
+          <article class="panel proxmox-panel">
+            <div class="panel-title-row">
+              <span class="panel-label">Virtualization</span>
+              <button id="refresh-proxmox" class="small-button">Refresh</button>
             </div>
-            <div id="proxmox-grid" class="node-strip"></div>
+            <div id="proxmox-grid" class="node-grid"></div>
           </article>
 
-          <article class="glass-card clock-card">
+          <article class="panel clock-panel">
             <strong id="clock-time">--:--</strong>
             <span id="clock-date">Loading</span>
             <small id="api-status">Connecting</small>
           </article>
         </section>
 
-        <section class="services-section" id="services">
-          <div class="section-line">
-            <span id="config-note">Services</span>
-            <button id="edit-toggle" class="tiny-button">Edit</button>
+        <section class="services-section">
+          <div class="section-title-row">
+            <div>
+              <span class="panel-label">Services</span>
+              <h1 id="config-note">Homepage</h1>
+            </div>
           </div>
-          <div id="services-grid" class="tile-groups"></div>
+          <div id="services-grid" class="service-groups"></div>
         </section>
 
-        <section class="glass-card discovery-card" id="discovery">
-          <div class="panel-head">
+        <section class="panel discovery-panel">
+          <div class="panel-title-row">
             <div>
-              <span class="mini-title">Discovery</span>
+              <span class="panel-label">Discovery</span>
               <h2>Network Scan</h2>
             </div>
-            <span id="last-scan">Never scanned</span>
+            <span id="last-scan" class="muted">Never scanned</span>
           </div>
           <form id="scan-form" class="scan-form">
             <label>
@@ -88,13 +88,48 @@
           <div id="scan-results" class="scan-results"></div>
         </section>
       </main>
+
+      <main class="settings view" id="view-settings">
+        <section class="panel settings-panel">
+          <div class="panel-title-row">
+            <div>
+              <span class="panel-label">Appearance</span>
+              <h1>Settings</h1>
+            </div>
+            <button id="save-settings" class="primary">Save</button>
+          </div>
+
+          <div class="settings-grid">
+            <label>
+              <span>Theme</span>
+              <select id="setting-theme">
+                <option value="cosmic">Cosmic</option>
+                <option value="dark">Dark</option>
+                <option value="midnight">Midnight</option>
+              </select>
+            </label>
+            <label>
+              <span>Accent color</span>
+              <input id="setting-accent" type="color" value="#5ee0b5" />
+            </label>
+            <label>
+              <span>Panel opacity</span>
+              <input id="setting-panel-opacity" type="range" min="35" max="95" value="82" />
+            </label>
+            <label class="wide">
+              <span>Background URL</span>
+              <input id="setting-background" placeholder="/assets/space-bg.png" />
+            </label>
+          </div>
+        </section>
+      </main>
     </div>
 
-    <dialog id="service-dialog" class="service-dialog">
+    <dialog id="service-dialog" class="dialog">
       <form id="service-form" method="dialog">
         <div class="dialog-head">
           <h2 id="dialog-title">Add Service</h2>
-          <button value="cancel" class="icon-button" title="Close">x</button>
+          <button value="cancel" class="square-button" title="Close">x</button>
         </div>
         <input type="hidden" id="service-group-index" />
         <input type="hidden" id="service-index" />
@@ -108,7 +143,7 @@
         </label>
         <label>
           <span>Icon</span>
-          <input id="service-icon" maxlength="12" placeholder="HA, icon name, or symbol" />
+          <input id="service-icon" maxlength="16" placeholder="HA, icon name, or symbol" />
         </label>
         <label>
           <span>Group</span>

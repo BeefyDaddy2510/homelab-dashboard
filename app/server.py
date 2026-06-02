@@ -16,6 +16,7 @@ BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 CONFIG_DIR = Path(os.environ.get("CONFIG_DIR", "/config"))
 SERVICES_FILE = CONFIG_DIR / "services.json"
+SETTINGS_FILE = CONFIG_DIR / "settings.json"
 
 DEFAULT_PORTS = [22, 80, 443, 445, 5000, 8000, 8080, 8123, 9000, 9443]
 MAX_SCAN_HOSTS = int(os.environ.get("MAX_SCAN_HOSTS", "512"))
@@ -63,6 +64,44 @@ def load_services():
         ]
     }
     return read_json_file(SERVICES_FILE, fallback)
+
+
+def load_settings():
+    fallback = {
+        "theme": "cosmic",
+        "background": "/assets/space-bg.png",
+        "accent": "#5ee0b5",
+        "panel_opacity": 82,
+    }
+    settings = read_json_file(SETTINGS_FILE, fallback)
+    if not isinstance(settings, dict) or "error" in settings:
+        return fallback
+    return {**fallback, **settings}
+
+
+def save_settings(payload):
+    settings = load_settings()
+    allowed_themes = {"cosmic", "dark", "midnight"}
+    theme = payload.get("theme", settings["theme"])
+    if theme not in allowed_themes:
+        raise ValueError("Invalid theme.")
+
+    accent = str(payload.get("accent", settings["accent"])).strip() or settings["accent"]
+    background = str(payload.get("background", settings["background"])).strip()
+    panel_opacity = int(payload.get("panel_opacity", settings["panel_opacity"]))
+    panel_opacity = max(35, min(95, panel_opacity))
+
+    settings = {
+        "theme": theme,
+        "background": background,
+        "accent": accent,
+        "panel_opacity": panel_opacity,
+    }
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    with SETTINGS_FILE.open("w", encoding="utf-8") as handle:
+        json.dump(settings, handle, indent=2)
+        handle.write("\n")
+    return settings
 
 
 def save_service(service):
@@ -369,6 +408,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             json_response(self, load_services())
             return
 
+        if parsed.path == "/api/settings":
+            json_response(self, load_settings())
+            return
+
         if parsed.path == "/api/health":
             json_response(self, {"ok": True, "version": "0.1.0"})
             return
@@ -417,6 +460,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 return
             if parsed.path == "/api/services/delete":
                 json_response(self, delete_service(payload), 200)
+                return
+            if parsed.path == "/api/settings":
+                json_response(self, save_settings(payload), 200)
                 return
             error_response(self, "Not found", 404)
         except Exception as exc:

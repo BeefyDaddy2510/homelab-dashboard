@@ -1,7 +1,6 @@
 const state = {
   config: { groups: [] },
-  discovery: [],
-  editMode: false,
+  settings: {},
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -42,7 +41,7 @@ function firstNumber(...values) {
 
 function iconText(service) {
   const icon = String(service.icon || "").trim();
-  if (icon) return icon.slice(0, 6).toUpperCase();
+  if (icon) return icon.slice(0, 8).toUpperCase();
   return String(service.name || "?").slice(0, 2).toUpperCase();
 }
 
@@ -53,15 +52,52 @@ async function requestJson(url, options) {
   return payload;
 }
 
-function allServices(config = state.config) {
-  return (config.groups || []).flatMap((group, groupIndex) =>
-    (group.services || []).map((service, serviceIndex) => ({
-      group,
-      groupIndex,
-      service,
-      serviceIndex,
-    })),
+function applySettings(settings) {
+  state.settings = settings || {};
+  document.body.classList.remove("theme-cosmic", "theme-dark", "theme-midnight");
+  document.body.classList.add(`theme-${state.settings.theme || "cosmic"}`);
+  document.documentElement.style.setProperty("--accent", state.settings.accent || "#5ee0b5");
+  document.documentElement.style.setProperty(
+    "--panel-opacity",
+    String((Number(state.settings.panel_opacity) || 82) / 100),
   );
+
+  const background = state.settings.background || "/assets/space-bg.png";
+  if (background) {
+    document.documentElement.style.setProperty("--background-image", `url("${background.replaceAll('"', "%22")}")`);
+  }
+
+  $("#setting-theme").value = state.settings.theme || "cosmic";
+  $("#setting-accent").value = state.settings.accent || "#5ee0b5";
+  $("#setting-panel-opacity").value = state.settings.panel_opacity || 82;
+  $("#setting-background").value = background;
+}
+
+async function loadSettings() {
+  applySettings(await requestJson("/api/settings"));
+}
+
+async function saveSettings() {
+  const settings = await requestJson("/api/settings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      theme: $("#setting-theme").value,
+      accent: $("#setting-accent").value,
+      panel_opacity: $("#setting-panel-opacity").value,
+      background: $("#setting-background").value.trim(),
+    }),
+  });
+  applySettings(settings);
+}
+
+function switchView(view) {
+  document.querySelectorAll(".view").forEach((element) => element.classList.remove("active"));
+  document.querySelectorAll(".nav-button").forEach((button) => button.classList.remove("active"));
+  $(`#view-${view}`)?.classList.add("active");
+  document.querySelectorAll(`[data-view-link="${view}"]`).forEach((button) => {
+    if (button.classList.contains("nav-button")) button.classList.add("active");
+  });
 }
 
 function renderServices(config) {
@@ -71,34 +107,37 @@ function renderServices(config) {
   const groups = Array.isArray(config.groups) ? config.groups : [];
   let count = 0;
 
-  container.classList.toggle("editing", state.editMode);
   container.innerHTML = groups
     .map((group, groupIndex) => {
-      const services = (group.services || []).filter((service) => {
-        const haystack = `${service.name} ${service.description} ${service.url}`.toLowerCase();
-        return !query || haystack.includes(query);
-      });
-      count += group.services?.length || 0;
+      const groupServices = group.services || [];
+      count += groupServices.length;
+      const services = groupServices
+        .map((service, serviceIndex) => ({ service, serviceIndex }))
+        .filter(({ service }) => {
+          const haystack = `${service.name} ${service.description} ${service.url}`.toLowerCase();
+          return !query || haystack.includes(query);
+        });
+
       if (!services.length) return "";
+
       return `
-        <div class="tile-group">
+        <div class="service-group">
           <h3 class="group-title">${escapeHtml(group.name || "Services")}</h3>
-          <div class="tile-list">
+          <div class="service-list">
             ${services
-              .map((service) => {
-                const serviceIndex = (group.services || []).indexOf(service);
-                return `
-                  <div class="service-tile-wrap">
-                    <a class="service-tile" href="${escapeHtml(service.url)}" target="_blank" rel="noreferrer" title="${escapeHtml(
-                      `${service.name}\n${service.description || service.url}`,
-                    )}">
-                      <span class="tile-icon">${escapeHtml(iconText(service))}</span>
-                      <span class="service-name">${escapeHtml(service.name)}</span>
-                    </a>
-                    <button class="edit-service-button" data-edit="${groupIndex}:${serviceIndex}" title="Edit service">E</button>
+              .map(({ service, serviceIndex }) => `
+                <article class="service-card">
+                  <a class="service-link" href="${escapeHtml(service.url)}" target="_blank" rel="noreferrer" aria-label="Open ${escapeHtml(
+                    service.name,
+                  )}"></a>
+                  <div class="service-icon">${escapeHtml(iconText(service))}</div>
+                  <div class="service-copy">
+                    <strong>${escapeHtml(service.name)}</strong>
+                    <span>${escapeHtml(service.description || service.url || "")}</span>
                   </div>
-                `;
-              })
+                  <button class="service-menu" data-edit="${groupIndex}:${serviceIndex}" title="Edit service">...</button>
+                </article>
+              `)
               .join("")}
           </div>
         </div>
@@ -110,8 +149,7 @@ function renderServices(config) {
     container.innerHTML = `<div class="empty">No services match this view.</div>`;
   }
   setText("#service-count", count);
-  setText("#config-note", `${count} services`);
-  setText("#edit-toggle", state.editMode ? "Done" : "Edit");
+  setText("#config-note", `${count} configured`);
 }
 
 function renderProxmox(payload) {
@@ -172,7 +210,6 @@ function renderProxmox(payload) {
 function renderScan(payload) {
   const container = $("#scan-results");
   const hosts = payload.hosts || [];
-  state.discovery = hosts;
   setText("#host-count", hosts.length);
   setText("#last-scan", `${hosts.length} hosts in ${Math.round(payload.duration_ms / 1000)}s`);
 
@@ -234,7 +271,6 @@ function serviceFormPayload() {
 }
 
 function openServiceDialog(entry) {
-  const dialog = $("#service-dialog");
   const isEdit = Boolean(entry);
   $("#dialog-title").textContent = isEdit ? "Edit Service" : "Add Service";
   $("#delete-service").style.visibility = isEdit ? "visible" : "hidden";
@@ -245,7 +281,7 @@ function openServiceDialog(entry) {
   $("#service-icon").value = isEdit ? entry.service.icon || "" : "";
   $("#service-group").value = isEdit ? entry.group.name || "" : "Manual";
   $("#service-description").value = isEdit ? entry.service.description || "" : "";
-  dialog.showModal();
+  $("#service-dialog").showModal();
 }
 
 async function saveService(event) {
@@ -281,14 +317,12 @@ async function deleteCurrentService() {
 
 async function addDiscoveredService(encoded) {
   const service = JSON.parse(decodeURIComponent(encoded));
-  const response = await fetch("/api/services/discovered", {
+  const config = await requestJson("/api/services/discovered", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(service),
   });
-  const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error || response.statusText);
-  renderServices(payload);
+  renderServices(config);
 }
 
 async function loadConfig() {
@@ -324,6 +358,13 @@ async function runScan(event) {
 }
 
 document.addEventListener("click", (event) => {
+  const viewButton = event.target.closest("[data-view-link]");
+  if (viewButton) {
+    event.preventDefault();
+    switchView(viewButton.dataset.viewLink);
+    return;
+  }
+
   const addButton = event.target.closest("[data-add-service]");
   if (addButton) {
     addButton.disabled = true;
@@ -340,6 +381,8 @@ document.addEventListener("click", (event) => {
 
   const editButton = event.target.closest("[data-edit]");
   if (editButton) {
+    event.preventDefault();
+    event.stopPropagation();
     const [groupIndex, serviceIndex] = editButton.dataset.edit.split(":").map(Number);
     const group = state.config.groups[groupIndex];
     const service = group?.services?.[serviceIndex];
@@ -352,15 +395,24 @@ $("#cancel-dialog").addEventListener("click", () => $("#service-dialog").close()
 $("#delete-service").addEventListener("click", deleteCurrentService);
 $("#service-form").addEventListener("submit", saveService);
 $("#service-search").addEventListener("input", () => renderServices(state.config));
-$("#edit-toggle").addEventListener("click", () => {
-  state.editMode = !state.editMode;
-  renderServices(state.config);
-});
 $("#scan-form").addEventListener("submit", runScan);
 $("#refresh-config").addEventListener("click", loadConfig);
 $("#refresh-proxmox").addEventListener("click", loadProxmox);
+$("#save-settings").addEventListener("click", saveSettings);
+
+["#setting-theme", "#setting-accent", "#setting-panel-opacity", "#setting-background"].forEach((selector) => {
+  $(selector).addEventListener("input", () => {
+    applySettings({
+      theme: $("#setting-theme").value,
+      accent: $("#setting-accent").value,
+      panel_opacity: $("#setting-panel-opacity").value,
+      background: $("#setting-background").value.trim(),
+    });
+  });
+});
 
 updateClock();
 setInterval(updateClock, 1000);
+loadSettings();
 loadConfig();
 loadProxmox();
