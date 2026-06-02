@@ -155,6 +155,7 @@ def normalize_service(service):
         "url": url,
         "description": service.get("description", "").strip(),
         "icon": service.get("icon", "").strip() or name[:2].upper(),
+        "icon_url": service.get("icon_url", "").strip(),
     }
 
 

@@ -45,6 +45,14 @@ function iconText(service) {
   return String(service.name || "?").slice(0, 2).toUpperCase();
 }
 
+function iconMarkup(service) {
+  const iconUrl = String(service.icon_url || "").trim();
+  if (iconUrl) {
+    return `<img src="${escapeHtml(iconUrl)}" alt="" loading="lazy" />`;
+  }
+  return `<span>${escapeHtml(iconText(service))}</span>`;
+}
+
 async function requestJson(url, options) {
   const response = await fetch(url, options);
   const payload = await response.json();
@@ -130,7 +138,7 @@ function renderServices(config) {
                   <a class="service-link" href="${escapeHtml(service.url)}" target="_blank" rel="noreferrer" aria-label="Open ${escapeHtml(
                     service.name,
                   )}"></a>
-                  <div class="service-icon">${escapeHtml(iconText(service))}</div>
+                  <div class="service-icon">${iconMarkup(service)}</div>
                   <div class="service-copy">
                     <strong>${escapeHtml(service.name)}</strong>
                     <span>${escapeHtml(service.description || service.url || "")}</span>
@@ -265,6 +273,7 @@ function serviceFormPayload() {
     name: $("#service-name").value.trim(),
     url: $("#service-url").value.trim(),
     icon: $("#service-icon").value.trim(),
+    icon_url: $("#service-icon-url").value.trim(),
     group: $("#service-group").value.trim() || "Manual",
     description: $("#service-description").value.trim(),
   };
@@ -279,6 +288,8 @@ function openServiceDialog(entry) {
   $("#service-name").value = isEdit ? entry.service.name || "" : "";
   $("#service-url").value = isEdit ? entry.service.url || "" : "";
   $("#service-icon").value = isEdit ? entry.service.icon || "" : "";
+  $("#service-icon-url").value = isEdit ? entry.service.icon_url || "" : "";
+  $("#service-icon-file").value = "";
   $("#service-group").value = isEdit ? entry.group.name || "" : "Manual";
   $("#service-description").value = isEdit ? entry.service.description || "" : "";
   $("#service-dialog").showModal();
@@ -357,6 +368,20 @@ async function runScan(event) {
   }
 }
 
+function readIconFile(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  if (!file.type.startsWith("image/")) {
+    event.target.value = "";
+    return;
+  }
+  const reader = new FileReader();
+  reader.addEventListener("load", () => {
+    $("#service-icon-url").value = String(reader.result || "");
+  });
+  reader.readAsDataURL(file);
+}
+
 document.addEventListener("click", (event) => {
   const viewButton = event.target.closest("[data-view-link]");
   if (viewButton) {
@@ -394,6 +419,7 @@ $("#add-service").addEventListener("click", () => openServiceDialog());
 $("#cancel-dialog").addEventListener("click", () => $("#service-dialog").close());
 $("#delete-service").addEventListener("click", deleteCurrentService);
 $("#service-form").addEventListener("submit", saveService);
+$("#service-icon-file").addEventListener("change", readIconFile);
 $("#service-search").addEventListener("input", () => renderServices(state.config));
 $("#scan-form").addEventListener("submit", runScan);
 $("#refresh-config").addEventListener("click", loadConfig);

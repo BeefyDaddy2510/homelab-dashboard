@@ -129,6 +129,8 @@ Edit `config/services.json`:
 
 The container mounts this directory as `/config`, so edits survive rebuilds.
 
+Service icons can be short text, an image URL, or an uploaded local image from the edit dialog. Uploaded icons are stored in `services.json` as data URLs, so small square PNG/WebP/SVG icons are best.
+
 ## Proxmox API
 
 Create a Proxmox API token and set these environment variables in `compose.yml`:

@@ -395,6 +395,19 @@ h2 {
   font-weight: 900;
 }
 
+.service-icon img {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+}
+
+.service-icon span {
+  display: block;
+  max-width: 40px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .service-copy {
   min-width: 0;
 }
