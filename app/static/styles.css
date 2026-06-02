@@ -265,6 +265,12 @@ label input[type="range"] {
   gap: 14px;
 }
 
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 h1,
 h2,
 h3,
@@ -284,6 +290,14 @@ h2 {
 
 .virtualization-section {
   margin-bottom: 28px;
+}
+
+.virtualization-section.collapsed {
+  margin-bottom: 18px;
+}
+
+.virtualization-section.collapsed .virtualization-body {
+  display: none;
 }
 
 .node-grid {

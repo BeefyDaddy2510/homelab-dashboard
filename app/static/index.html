@@ -75,9 +75,14 @@
               <span class="panel-label">Virtualization</span>
               <h1>Proxmox Nodes</h1>
             </div>
-            <button id="refresh-proxmox" class="small-button">Refresh</button>
+            <div class="panel-actions">
+              <button id="toggle-virtualization" class="small-button" aria-expanded="true">Collapse</button>
+              <button id="refresh-proxmox" class="small-button">Refresh</button>
+            </div>
           </div>
-          <div id="proxmox-grid" class="node-grid"></div>
+          <div id="virtualization-body" class="virtualization-body">
+            <div id="proxmox-grid" class="node-grid"></div>
+          </div>
         </section>
 
         <section class="services-section">

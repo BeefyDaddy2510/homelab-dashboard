@@ -63,6 +63,15 @@ function updateQuickStats() {
   setText("#quick-containers", state.proxmoxContainers);
 }
 
+function setVirtualizationCollapsed(collapsed) {
+  const section = document.querySelector(".virtualization-section");
+  const button = $("#toggle-virtualization");
+  section.classList.toggle("collapsed", collapsed);
+  button.textContent = collapsed ? "Expand" : "Collapse";
+  button.setAttribute("aria-expanded", String(!collapsed));
+  localStorage.setItem("homepageDashVirtualizationCollapsed", collapsed ? "true" : "false");
+}
+
 function iconText(service) {
   const icon = String(service.icon || "").trim();
   if (icon) return icon.slice(0, 8).toUpperCase();
@@ -600,6 +609,10 @@ $("#service-search").addEventListener("input", () => renderServices(state.config
 $("#scan-form").addEventListener("submit", runScan);
 $("#refresh-config").addEventListener("click", loadConfig);
 $("#refresh-proxmox").addEventListener("click", loadProxmox);
+$("#toggle-virtualization").addEventListener("click", () => {
+  const collapsed = document.querySelector(".virtualization-section").classList.contains("collapsed");
+  setVirtualizationCollapsed(!collapsed);
+});
 $("#save-settings").addEventListener("click", saveSettings);
 
 ["#setting-theme", "#setting-accent", "#setting-panel-opacity", "#setting-background", "#setting-weather-location"].forEach((selector) => {
@@ -616,6 +629,7 @@ $("#save-settings").addEventListener("click", saveSettings);
 
 updateClock();
 setInterval(updateClock, 1000);
+setVirtualizationCollapsed(localStorage.getItem("homepageDashVirtualizationCollapsed") === "true");
 loadSettings();
 loadProxmoxConfig();
 loadConfig();
