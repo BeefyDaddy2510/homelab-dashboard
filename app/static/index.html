@@ -7,96 +7,72 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <div class="shell">
-      <aside class="sidebar">
-        <div class="brand">
-          <div class="brand-mark">HD</div>
-          <div>
-            <strong>Homelab</strong>
-            <span>Command surface</span>
-          </div>
+    <div class="app">
+      <header class="topbar">
+        <a class="brand" href="#services" aria-label="Homelab Dashboard">
+          <span class="brand-mark"></span>
+          <span>LAB DASH</span>
+        </a>
+        <label class="search">
+          <span>Search</span>
+          <input id="service-search" placeholder="Search..." autocomplete="off" />
+        </label>
+        <div class="top-actions">
+          <button id="add-service" class="icon-button" title="Add service">+</button>
+          <button id="refresh-config" class="icon-button" title="Refresh services">R</button>
         </div>
-        <nav class="nav">
-          <a href="#overview" class="active">Overview</a>
-          <a href="#services">Services</a>
-          <a href="#proxmox">Proxmox</a>
-          <a href="#discovery">Discovery</a>
-        </nav>
-        <div class="side-status">
-          <span class="pulse"></span>
-          <span id="api-status">Connecting</span>
-        </div>
-      </aside>
+      </header>
 
-      <main class="main">
-        <section class="topbar" id="overview">
-          <div>
-            <p class="eyebrow">Local network</p>
-            <h1>Homelab Dashboard</h1>
-          </div>
-          <div class="actions">
-            <button id="refresh-proxmox" class="icon-button" title="Refresh Proxmox">R</button>
-            <button id="refresh-config" class="primary">Refresh</button>
-          </div>
-        </section>
-
-        <section class="metrics-grid">
-          <article class="metric">
-            <span>Services</span>
-            <strong id="service-count">0</strong>
-          </article>
-          <article class="metric">
-            <span>Proxmox Nodes</span>
-            <strong id="node-count">-</strong>
-          </article>
-          <article class="metric">
-            <span>Discovered Hosts</span>
-            <strong id="host-count">0</strong>
-          </article>
-          <article class="metric">
-            <span>Last Scan</span>
-            <strong id="last-scan">Never</strong>
-          </article>
-        </section>
-
-        <section class="section" id="services">
-          <div class="section-head">
-            <div>
-              <p class="eyebrow">Launchpad</p>
-              <h2>Services</h2>
-            </div>
-            <span id="config-note" class="muted"></span>
-          </div>
-          <div id="services-grid" class="service-groups"></div>
-        </section>
-
-        <section class="section two-column" id="proxmox">
-          <div>
-            <div class="section-head">
+      <main class="dashboard">
+        <section class="hero-grid" aria-label="Dashboard summary">
+          <article class="glass-card weather-card">
+            <div class="mini-title">Local Network</div>
+            <div class="weather-row">
               <div>
-                <p class="eyebrow">Virtualization</p>
-                <h2>Proxmox Monitor</h2>
+                <strong id="service-count">0</strong>
+                <span>Services</span>
               </div>
-              <span id="proxmox-state" class="muted">Not loaded</span>
+              <div>
+                <strong id="host-count">0</strong>
+                <span>Hosts</span>
+              </div>
+              <div>
+                <strong id="node-count">-</strong>
+                <span>Nodes</span>
+              </div>
             </div>
-            <div id="proxmox-grid" class="nodes-grid"></div>
-          </div>
-          <aside class="panel">
-            <h3>API Setup</h3>
-            <p>Set these environment variables in Docker Compose:</p>
-            <code>PROXMOX_URL</code>
-            <code>PROXMOX_TOKEN_ID</code>
-            <code>PROXMOX_TOKEN_SECRET</code>
-            <code>PROXMOX_VERIFY_SSL=false</code>
-          </aside>
+          </article>
+
+          <article class="glass-card proxmox-card" id="proxmox">
+            <div class="panel-head">
+              <span class="mini-title">Virtualization</span>
+              <button id="refresh-proxmox" class="tiny-button">Refresh</button>
+            </div>
+            <div id="proxmox-grid" class="node-strip"></div>
+          </article>
+
+          <article class="glass-card clock-card">
+            <strong id="clock-time">--:--</strong>
+            <span id="clock-date">Loading</span>
+            <small id="api-status">Connecting</small>
+          </article>
         </section>
 
-        <section class="section" id="discovery">
-          <div class="section-head">
+        <section class="services-section" id="services">
+          <div class="section-line">
+            <span id="config-note">Services</span>
+            <button id="edit-toggle" class="tiny-button">Edit</button>
+          </div>
+          <div id="services-grid" class="tile-groups"></div>
+        </section>
+
+        <section class="glass-card discovery-card" id="discovery">
+          <div class="panel-head">
             <div>
-              <p class="eyebrow">Discovery</p>
+              <span class="mini-title">Discovery</span>
               <h2>Network Scan</h2>
             </div>
+            <span id="last-scan">Never scanned</span>
           </div>
           <form id="scan-form" class="scan-form">
             <label>
@@ -113,6 +89,43 @@
         </section>
       </main>
     </div>
+
+    <dialog id="service-dialog" class="service-dialog">
+      <form id="service-form" method="dialog">
+        <div class="dialog-head">
+          <h2 id="dialog-title">Add Service</h2>
+          <button value="cancel" class="icon-button" title="Close">x</button>
+        </div>
+        <input type="hidden" id="service-group-index" />
+        <input type="hidden" id="service-index" />
+        <label>
+          <span>Name</span>
+          <input id="service-name" required placeholder="Home Assistant" />
+        </label>
+        <label>
+          <span>URL</span>
+          <input id="service-url" required placeholder="http://homeassistant.local:8123" />
+        </label>
+        <label>
+          <span>Icon</span>
+          <input id="service-icon" maxlength="12" placeholder="HA, icon name, or symbol" />
+        </label>
+        <label>
+          <span>Group</span>
+          <input id="service-group" placeholder="Apps" />
+        </label>
+        <label>
+          <span>Description</span>
+          <input id="service-description" placeholder="Smart home control" />
+        </label>
+        <div class="dialog-actions">
+          <button id="delete-service" class="danger" type="button">Delete</button>
+          <span></span>
+          <button value="cancel" type="button" id="cancel-dialog">Cancel</button>
+          <button class="primary" type="submit">Save</button>
+        </div>
+      </form>
+    </dialog>
 
     <script src="/app.js"></script>
   </body>

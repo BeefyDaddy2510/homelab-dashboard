@@ -99,6 +99,102 @@ def save_service(service):
     return config
 
 
+def normalize_service(service):
+    url = service.get("url", "").strip()
+    name = service.get("name", "").strip()
+    if not url:
+        raise ValueError("Service URL is required.")
+    if not name:
+        raise ValueError("Service name is required.")
+
+    parsed = urllib.parse.urlparse(url)
+    if not parsed.scheme:
+        url = f"http://{url}"
+
+    return {
+        "name": name,
+        "url": url,
+        "description": service.get("description", "").strip(),
+        "icon": service.get("icon", "").strip() or name[:2].upper(),
+    }
+
+
+def find_or_create_group(config, group_name):
+    groups = config.setdefault("groups", [])
+    clean_name = (group_name or "Manual").strip() or "Manual"
+    group = next((item for item in groups if item.get("name") == clean_name), None)
+    if not group:
+        group = {"name": clean_name, "services": []}
+        groups.append(group)
+    return group
+
+
+def write_config(config):
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    with SERVICES_FILE.open("w", encoding="utf-8") as handle:
+        json.dump(config, handle, indent=2)
+        handle.write("\n")
+
+
+def add_manual_service(payload):
+    config = load_services()
+    if not isinstance(config, dict) or "error" in config:
+        config = {"groups": []}
+
+    service = normalize_service(payload)
+    group = find_or_create_group(config, payload.get("group"))
+    group.setdefault("services", []).append(service)
+    write_config(config)
+    return config
+
+
+def update_service(payload):
+    config = load_services()
+    groups = config.get("groups", [])
+    group_index = int(payload.get("groupIndex"))
+    service_index = int(payload.get("serviceIndex"))
+
+    try:
+        current_group = groups[group_index]
+        current_group.setdefault("services", [])[service_index]
+    except (IndexError, TypeError):
+        raise ValueError("Service was not found.")
+
+    updated = normalize_service(payload)
+    target_group_name = payload.get("group") or current_group.get("name") or "Manual"
+    target_group = find_or_create_group(config, target_group_name)
+
+    del current_group["services"][service_index]
+    target_group.setdefault("services", []).append(updated)
+    config["groups"] = [
+        group
+        for group in groups
+        if group.get("services") or group is target_group or group.get("name") not in ("Manual", "Discovered")
+    ]
+    write_config(config)
+    return config
+
+
+def delete_service(payload):
+    config = load_services()
+    groups = config.get("groups", [])
+    group_index = int(payload.get("groupIndex"))
+    service_index = int(payload.get("serviceIndex"))
+
+    try:
+        del groups[group_index].setdefault("services", [])[service_index]
+    except (IndexError, TypeError):
+        raise ValueError("Service was not found.")
+
+    config["groups"] = [
+        group
+        for group in groups
+        if group.get("services") or group.get("name") not in ("Manual", "Discovered")
+    ]
+    write_config(config)
+    return config
+
+
 def parse_ports(raw):
     if not raw:
         return DEFAULT_PORTS
@@ -301,17 +397,28 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self.path = "/index.html"
         return super().do_GET()
 
+    def read_body_json(self):
+        length = int(self.headers.get("Content-Length", "0"))
+        body = self.rfile.read(length).decode("utf-8")
+        return json.loads(body or "{}")
+
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
-        if parsed.path != "/api/services":
-            error_response(self, "Not found", 404)
-            return
-
         try:
-            length = int(self.headers.get("Content-Length", "0"))
-            body = self.rfile.read(length).decode("utf-8")
-            payload = json.loads(body or "{}")
-            json_response(self, save_service(payload), 201)
+            payload = self.read_body_json()
+            if parsed.path == "/api/services":
+                json_response(self, add_manual_service(payload), 201)
+                return
+            if parsed.path == "/api/services/discovered":
+                json_response(self, save_service(payload), 201)
+                return
+            if parsed.path == "/api/services/update":
+                json_response(self, update_service(payload), 200)
+                return
+            if parsed.path == "/api/services/delete":
+                json_response(self, delete_service(payload), 200)
+                return
+            error_response(self, "Not found", 404)
         except Exception as exc:
             error_response(self, str(exc), 400)
 
