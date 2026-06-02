@@ -222,16 +222,39 @@ def proxmox_request(path):
 
 def proxmox_summary():
     nodes = proxmox_request("/nodes")
+    try:
+        resources = proxmox_request("/cluster/resources")
+    except Exception:
+        resources = []
+
     enriched = []
     for node in nodes:
         name = node.get("node")
         item = dict(node)
+        item["vms"] = [
+            resource
+            for resource in resources
+            if resource.get("type") == "qemu" and resource.get("node") == name
+        ]
+        item["containers"] = [
+            resource
+            for resource in resources
+            if resource.get("type") == "lxc" and resource.get("node") == name
+        ]
         try:
             item["status_detail"] = proxmox_request(f"/nodes/{urllib.parse.quote(name)}/status")
-            item["vms"] = proxmox_request(f"/nodes/{urllib.parse.quote(name)}/qemu")
-            item["containers"] = proxmox_request(f"/nodes/{urllib.parse.quote(name)}/lxc")
         except Exception as exc:
             item["detail_error"] = str(exc)
+
+        try:
+            item["vms"] = proxmox_request(f"/nodes/{urllib.parse.quote(name)}/qemu")
+        except Exception as exc:
+            item["vm_error"] = str(exc)
+
+        try:
+            item["containers"] = proxmox_request(f"/nodes/{urllib.parse.quote(name)}/lxc")
+        except Exception as exc:
+            item["container_error"] = str(exc)
         enriched.append(item)
     return {"nodes": enriched}
 

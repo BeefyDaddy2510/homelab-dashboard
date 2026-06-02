@@ -28,6 +28,10 @@ function percent(value) {
   return Math.max(0, Math.min(100, Math.round(value * 100)));
 }
 
+function firstNumber(...values) {
+  return values.find((value) => Number.isFinite(value));
+}
+
 function serviceInitial(name) {
   return (name || "?").slice(0, 2).toUpperCase();
 }
@@ -98,11 +102,18 @@ function renderProxmox(payload) {
   container.innerHTML = nodes
     .map((node) => {
       const detail = node.status_detail || {};
-      const cpu = percent(detail.cpu);
-      const memory = percent(detail.memory?.used / detail.memory?.total);
-      const root = percent(detail.rootfs?.used / detail.rootfs?.total);
+      const memoryUsed = firstNumber(detail.memory?.used, node.mem);
+      const memoryTotal = firstNumber(detail.memory?.total, node.maxmem);
+      const rootUsed = firstNumber(detail.rootfs?.used, node.disk);
+      const rootTotal = firstNumber(detail.rootfs?.total, node.maxdisk);
+      const cpu = percent(firstNumber(detail.cpu, node.cpu));
+      const memory = percent(memoryUsed / memoryTotal);
+      const root = percent(rootUsed / rootTotal);
       const vms = Array.isArray(node.vms) ? node.vms.length : 0;
       const containers = Array.isArray(node.containers) ? node.containers.length : 0;
+      const detailWarning = node.detail_error
+        ? `<div class="node-warning">Detail API unavailable: ${escapeHtml(node.detail_error)}</div>`
+        : "";
       return `
         <article class="node-card">
           <div class="node-top">
@@ -118,14 +129,15 @@ function renderProxmox(payload) {
               <div class="bar"><i style="--value:${cpu}%"></i></div>
             </div>
             <div class="resource-row">
-              <span>Memory ${memory}% of ${formatBytes(detail.memory?.total)}</span>
+              <span>Memory ${memory}% of ${formatBytes(memoryTotal)}</span>
               <div class="bar"><i style="--value:${memory}%"></i></div>
             </div>
             <div class="resource-row">
-              <span>Root FS ${root}% of ${formatBytes(detail.rootfs?.total)}</span>
+              <span>Root FS ${root}% of ${formatBytes(rootTotal)}</span>
               <div class="bar"><i style="--value:${root}%"></i></div>
             </div>
           </div>
+          ${detailWarning}
         </article>
       `;
     })
