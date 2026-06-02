@@ -1,0 +1,305 @@
+import concurrent.futures
+import ipaddress
+import json
+import os
+import socket
+import ssl
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+
+BASE_DIR = Path(__file__).resolve().parent
+STATIC_DIR = BASE_DIR / "static"
+CONFIG_DIR = Path(os.environ.get("CONFIG_DIR", "/config"))
+SERVICES_FILE = CONFIG_DIR / "services.json"
+
+DEFAULT_PORTS = [22, 80, 443, 445, 5000, 8000, 8080, 8123, 9000, 9443]
+MAX_SCAN_HOSTS = int(os.environ.get("MAX_SCAN_HOSTS", "512"))
+SCAN_WORKERS = int(os.environ.get("SCAN_WORKERS", "96"))
+SCAN_TIMEOUT = float(os.environ.get("SCAN_TIMEOUT", "0.6"))
+
+
+def json_response(handler, payload, status=200):
+    body = json.dumps(payload, indent=2).encode("utf-8")
+    handler.send_response(status)
+    handler.send_header("Content-Type", "application/json; charset=utf-8")
+    handler.send_header("Content-Length", str(len(body)))
+    handler.end_headers()
+    handler.wfile.write(body)
+
+
+def error_response(handler, message, status=400):
+    json_response(handler, {"error": message}, status)
+
+
+def read_json_file(path, fallback):
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except FileNotFoundError:
+        return fallback
+    except json.JSONDecodeError as exc:
+        return {"error": f"Invalid JSON in {path}: {exc}"}
+
+
+def load_services():
+    fallback = {
+        "groups": [
+            {
+                "name": "Core",
+                "services": [
+                    {
+                        "name": "Router",
+                        "url": "http://192.168.1.1",
+                        "description": "Network gateway",
+                        "icon": "route",
+                    }
+                ],
+            }
+        ]
+    }
+    return read_json_file(SERVICES_FILE, fallback)
+
+
+def save_service(service):
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    config = load_services()
+    if not isinstance(config, dict) or "error" in config:
+        config = {"groups": []}
+
+    groups = config.setdefault("groups", [])
+    discovered = next((group for group in groups if group.get("name") == "Discovered"), None)
+    if not discovered:
+        discovered = {"name": "Discovered", "services": []}
+        groups.append(discovered)
+
+    services = discovered.setdefault("services", [])
+    url = service.get("url", "").strip()
+    if not url:
+        raise ValueError("Service URL is required.")
+    if any(item.get("url") == url for group in groups for item in group.get("services", [])):
+        return config
+
+    parsed = urllib.parse.urlparse(url)
+    services.append(
+        {
+            "name": service.get("name") or parsed.hostname or "Discovered service",
+            "url": url,
+            "description": service.get("description") or "Discovered on local network",
+            "icon": "scan",
+        }
+    )
+    with SERVICES_FILE.open("w", encoding="utf-8") as handle:
+        json.dump(config, handle, indent=2)
+        handle.write("\n")
+    return config
+
+
+def parse_ports(raw):
+    if not raw:
+        return DEFAULT_PORTS
+    ports = []
+    for item in raw.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        port = int(item)
+        if port < 1 or port > 65535:
+            raise ValueError(f"Port out of range: {port}")
+        ports.append(port)
+    return sorted(set(ports))
+
+
+def grab_http(ip, port, timeout):
+    scheme = "https" if port in (443, 8443, 9443) else "http"
+    url = f"{scheme}://{ip}:{port}/"
+    context = ssl._create_unverified_context()
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "HomelabDashboard/0.1"},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout, context=context) as resp:
+            content_type = resp.headers.get("content-type", "")
+            server = resp.headers.get("server", "")
+            title = ""
+            if "text/html" in content_type:
+                chunk = resp.read(65536).decode("utf-8", errors="ignore")
+                lower = chunk.lower()
+                start = lower.find("<title")
+                if start >= 0:
+                    start = lower.find(">", start)
+                    end = lower.find("</title>", start)
+                    if start >= 0 and end >= 0:
+                        title = " ".join(chunk[start + 1 : end].split())[:120]
+            return {"url": url, "server": server, "title": title}
+    except Exception:
+        return {"url": url, "server": "", "title": ""}
+
+
+def scan_port(ip, port, timeout):
+    started = time.perf_counter()
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(timeout)
+        result = sock.connect_ex((ip, port))
+    latency_ms = round((time.perf_counter() - started) * 1000)
+    if result != 0:
+        return None
+
+    service = {
+        "port": port,
+        "latency_ms": latency_ms,
+        "protocol": "tcp",
+        "hint": socket.getservbyport(port, "tcp") if port < 1024 else "",
+    }
+    if port in (80, 443, 5000, 8000, 8080, 8123, 8443, 9000, 9443):
+        service.update(grab_http(ip, port, timeout))
+    return service
+
+
+def scan_host(ip, ports, timeout):
+    open_ports = []
+    for port in ports:
+        result = scan_port(str(ip), port, timeout)
+        if result:
+            open_ports.append(result)
+    if not open_ports:
+        return None
+
+    try:
+        hostname = socket.gethostbyaddr(str(ip))[0]
+    except (socket.herror, socket.gaierror):
+        hostname = ""
+
+    return {"ip": str(ip), "hostname": hostname, "ports": open_ports}
+
+
+def run_discovery(cidr, ports, timeout):
+    network = ipaddress.ip_network(cidr, strict=False)
+    hosts = list(network.hosts())
+    if len(hosts) > MAX_SCAN_HOSTS:
+        raise ValueError(f"CIDR is too large. Limit is {MAX_SCAN_HOSTS} hosts.")
+
+    started = time.perf_counter()
+    results = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=SCAN_WORKERS) as pool:
+        futures = [pool.submit(scan_host, ip, ports, timeout) for ip in hosts]
+        for future in concurrent.futures.as_completed(futures):
+            found = future.result()
+            if found:
+                results.append(found)
+
+    results.sort(key=lambda item: tuple(int(part) for part in item["ip"].split(".")))
+    return {
+        "cidr": str(network),
+        "ports": ports,
+        "duration_ms": round((time.perf_counter() - started) * 1000),
+        "hosts": results,
+    }
+
+
+def proxmox_request(path):
+    base_url = os.environ.get("PROXMOX_URL", "").rstrip("/")
+    token_id = os.environ.get("PROXMOX_TOKEN_ID", "")
+    token_secret = os.environ.get("PROXMOX_TOKEN_SECRET", "")
+    verify_ssl = os.environ.get("PROXMOX_VERIFY_SSL", "true").lower() == "true"
+
+    if not base_url or not token_id or not token_secret:
+        raise RuntimeError("Set PROXMOX_URL, PROXMOX_TOKEN_ID, and PROXMOX_TOKEN_SECRET.")
+
+    headers = {"Authorization": f"PVEAPIToken={token_id}={token_secret}"}
+    req = urllib.request.Request(f"{base_url}/api2/json{path}", headers=headers)
+    context = None if verify_ssl else ssl._create_unverified_context()
+    with urllib.request.urlopen(req, timeout=8, context=context) as resp:
+        payload = json.loads(resp.read().decode("utf-8"))
+    return payload.get("data", payload)
+
+
+def proxmox_summary():
+    nodes = proxmox_request("/nodes")
+    enriched = []
+    for node in nodes:
+        name = node.get("node")
+        item = dict(node)
+        try:
+            item["status_detail"] = proxmox_request(f"/nodes/{urllib.parse.quote(name)}/status")
+            item["vms"] = proxmox_request(f"/nodes/{urllib.parse.quote(name)}/qemu")
+            item["containers"] = proxmox_request(f"/nodes/{urllib.parse.quote(name)}/lxc")
+        except Exception as exc:
+            item["detail_error"] = str(exc)
+        enriched.append(item)
+    return {"nodes": enriched}
+
+
+class DashboardHandler(SimpleHTTPRequestHandler):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, directory=str(STATIC_DIR), **kwargs)
+
+    def log_message(self, format, *args):
+        if os.environ.get("QUIET_LOGS", "false").lower() != "true":
+            super().log_message(format, *args)
+
+    def do_GET(self):
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/api/config":
+            json_response(self, load_services())
+            return
+
+        if parsed.path == "/api/health":
+            json_response(self, {"ok": True, "version": "0.1.0"})
+            return
+
+        if parsed.path == "/api/discovery":
+            params = urllib.parse.parse_qs(parsed.query)
+            cidr = params.get("cidr", [os.environ.get("DEFAULT_CIDR", "192.168.1.0/24")])[0]
+            try:
+                ports = parse_ports(params.get("ports", [""])[0])
+                timeout = float(params.get("timeout", [SCAN_TIMEOUT])[0])
+                json_response(self, run_discovery(cidr, ports, timeout))
+            except Exception as exc:
+                error_response(self, str(exc), 400)
+            return
+
+        if parsed.path == "/api/proxmox":
+            try:
+                json_response(self, proxmox_summary())
+            except urllib.error.HTTPError as exc:
+                error_response(self, f"Proxmox API error: {exc.code} {exc.reason}", exc.code)
+            except Exception as exc:
+                error_response(self, str(exc), 503)
+            return
+
+        if parsed.path == "/":
+            self.path = "/index.html"
+        return super().do_GET()
+
+    def do_POST(self):
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path != "/api/services":
+            error_response(self, "Not found", 404)
+            return
+
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            body = self.rfile.read(length).decode("utf-8")
+            payload = json.loads(body or "{}")
+            json_response(self, save_service(payload), 201)
+        except Exception as exc:
+            error_response(self, str(exc), 400)
+
+
+def main():
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    port = int(os.environ.get("PORT", "8080"))
+    server = ThreadingHTTPServer(("0.0.0.0", port), DashboardHandler)
+    print(f"Homelab Dashboard listening on :{port}", flush=True)
+    server.serve_forever()
+
+
+if __name__ == "__main__":
+    main()

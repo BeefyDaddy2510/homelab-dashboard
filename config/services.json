@@ -1,0 +1,32 @@
+{
+  "groups": [
+    {
+      "name": "Infrastructure",
+      "services": [
+        {
+          "name": "Proxmox",
+          "url": "https://proxmox.local:8006",
+          "description": "Virtualization cluster",
+          "icon": "server"
+        },
+        {
+          "name": "Router",
+          "url": "http://192.168.1.1",
+          "description": "Gateway and firewall",
+          "icon": "route"
+        }
+      ]
+    },
+    {
+      "name": "Apps",
+      "services": [
+        {
+          "name": "Home Assistant",
+          "url": "http://homeassistant.local:8123",
+          "description": "Smart home control",
+          "icon": "home"
+        }
+      ]
+    }
+  ]
+}
