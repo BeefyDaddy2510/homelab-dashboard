@@ -125,6 +125,17 @@
             </label>
           </div>
         </section>
+
+        <section class="panel settings-panel">
+          <div class="panel-title-row">
+            <div>
+              <span class="panel-label">Hosts</span>
+              <h1>Proxmox Servers</h1>
+            </div>
+            <button id="add-proxmox" class="primary">Add Server</button>
+          </div>
+          <div id="proxmox-config-list" class="config-list"></div>
+        </section>
       </main>
     </div>
 
@@ -168,6 +179,42 @@
           <button id="delete-service" class="danger" type="button">Delete</button>
           <span></span>
           <button value="cancel" type="button" id="cancel-dialog">Cancel</button>
+          <button class="primary" type="submit">Save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="proxmox-dialog" class="dialog">
+      <form id="proxmox-form" method="dialog">
+        <div class="dialog-head">
+          <h2 id="proxmox-dialog-title">Add Proxmox Server</h2>
+          <button value="cancel" class="square-button" title="Close">x</button>
+        </div>
+        <input type="hidden" id="proxmox-index" />
+        <label>
+          <span>Name</span>
+          <input id="proxmox-name" placeholder="Main" />
+        </label>
+        <label>
+          <span>URL</span>
+          <input id="proxmox-url" required placeholder="https://proxmox.local:8006" />
+        </label>
+        <label>
+          <span>Token ID</span>
+          <input id="proxmox-token-id" required placeholder="root@pam!dashboard" />
+        </label>
+        <label>
+          <span>Token secret</span>
+          <input id="proxmox-token-secret" type="password" placeholder="Leave blank to keep existing secret" />
+        </label>
+        <label class="checkbox-label">
+          <input id="proxmox-verify-ssl" type="checkbox" />
+          <span>Verify SSL certificate</span>
+        </label>
+        <div class="dialog-actions">
+          <button id="delete-proxmox" class="danger" type="button">Delete</button>
+          <span></span>
+          <button value="cancel" type="button" id="cancel-proxmox-dialog">Cancel</button>
           <button class="primary" type="submit">Save</button>
         </div>
       </form>

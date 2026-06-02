@@ -133,6 +133,14 @@ Service icons can be short text, an image URL, or an uploaded local image from t
 
 ## Proxmox API
 
+Proxmox servers can be managed from the UI:
+
+```text
+Settings -> Proxmox Servers -> Add Server
+```
+
+UI-managed hosts are stored in `/config/proxmox.json`. If at least one UI-managed host exists, it is used instead of Compose environment variables.
+
 Create a Proxmox API token and set these environment variables in `compose.yml`:
 
 ```yaml

@@ -1,6 +1,7 @@
 const state = {
   config: { groups: [] },
   settings: {},
+  proxmoxConfig: { servers: [] },
   discoveryHosts: 0,
   proxmoxNodes: 0,
 };
@@ -103,6 +104,93 @@ async function saveSettings() {
     }),
   });
   applySettings(settings);
+}
+
+function renderProxmoxConfig(config) {
+  state.proxmoxConfig = config || { servers: [] };
+  const container = $("#proxmox-config-list");
+  const servers = state.proxmoxConfig.servers || [];
+
+  if (!servers.length) {
+    container.innerHTML = `
+      <div class="empty">
+        No UI-managed Proxmox servers yet. Environment variables still work as fallback.
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = servers
+    .map((server, index) => `
+      <article class="config-row">
+        <div>
+          <strong>${escapeHtml(server.name || "Proxmox")}</strong>
+          <span>${escapeHtml(server.url || "")}</span>
+          <small>${escapeHtml(server.token_id || "")}${server.has_token_secret ? " / secret saved" : ""}</small>
+        </div>
+        <button data-edit-proxmox="${index}" class="small-button">Edit</button>
+      </article>
+    `)
+    .join("");
+}
+
+async function loadProxmoxConfig() {
+  renderProxmoxConfig(await requestJson("/api/proxmox/config"));
+}
+
+function openProxmoxDialog(entry) {
+  const isEdit = Boolean(entry);
+  $("#proxmox-dialog-title").textContent = isEdit ? "Edit Proxmox Server" : "Add Proxmox Server";
+  $("#delete-proxmox").style.visibility = isEdit ? "visible" : "hidden";
+  $("#proxmox-index").value = isEdit ? entry.index : "";
+  $("#proxmox-name").value = isEdit ? entry.server.name || "" : "";
+  $("#proxmox-url").value = isEdit ? entry.server.url || "" : "";
+  $("#proxmox-token-id").value = isEdit ? entry.server.token_id || "" : "";
+  $("#proxmox-token-secret").value = "";
+  $("#proxmox-token-secret").required = !isEdit;
+  $("#proxmox-verify-ssl").checked = isEdit ? Boolean(entry.server.verify_ssl) : false;
+  $("#proxmox-dialog").showModal();
+}
+
+function proxmoxFormPayload() {
+  return {
+    name: $("#proxmox-name").value.trim(),
+    url: $("#proxmox-url").value.trim(),
+    token_id: $("#proxmox-token-id").value.trim(),
+    token_secret: $("#proxmox-token-secret").value.trim(),
+    verify_ssl: $("#proxmox-verify-ssl").checked,
+  };
+}
+
+async function saveProxmoxServer(event) {
+  event.preventDefault();
+  const index = $("#proxmox-index").value;
+  const isEdit = index !== "";
+  const endpoint = isEdit ? "/api/proxmox/config/update" : "/api/proxmox/config";
+  const payload = isEdit ? { ...proxmoxFormPayload(), index } : proxmoxFormPayload();
+  renderProxmoxConfig(
+    await requestJson(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  );
+  $("#proxmox-dialog").close();
+  loadProxmox();
+}
+
+async function deleteCurrentProxmoxServer() {
+  const index = $("#proxmox-index").value;
+  if (index === "") return;
+  renderProxmoxConfig(
+    await requestJson("/api/proxmox/config/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ index }),
+    }),
+  );
+  $("#proxmox-dialog").close();
+  loadProxmox();
 }
 
 function switchView(view) {
@@ -446,13 +534,25 @@ document.addEventListener("click", (event) => {
     const group = state.config.groups[groupIndex];
     const service = group?.services?.[serviceIndex];
     if (group && service) openServiceDialog({ group, groupIndex, service, serviceIndex });
+    return;
+  }
+
+  const proxmoxEditButton = event.target.closest("[data-edit-proxmox]");
+  if (proxmoxEditButton) {
+    const index = Number(proxmoxEditButton.dataset.editProxmox);
+    const server = state.proxmoxConfig.servers?.[index];
+    if (server) openProxmoxDialog({ server, index });
   }
 });
 
 $("#add-service").addEventListener("click", () => openServiceDialog());
+$("#add-proxmox").addEventListener("click", () => openProxmoxDialog());
 $("#cancel-dialog").addEventListener("click", () => $("#service-dialog").close());
+$("#cancel-proxmox-dialog").addEventListener("click", () => $("#proxmox-dialog").close());
 $("#delete-service").addEventListener("click", deleteCurrentService);
+$("#delete-proxmox").addEventListener("click", deleteCurrentProxmoxServer);
 $("#service-form").addEventListener("submit", saveService);
+$("#proxmox-form").addEventListener("submit", saveProxmoxServer);
 $("#service-icon-file").addEventListener("change", readIconFile);
 $("#service-search").addEventListener("input", () => renderServices(state.config));
 $("#scan-form").addEventListener("submit", runScan);
@@ -474,5 +574,6 @@ $("#save-settings").addEventListener("click", saveSettings);
 updateClock();
 setInterval(updateClock, 1000);
 loadSettings();
+loadProxmoxConfig();
 loadConfig();
 loadProxmox();

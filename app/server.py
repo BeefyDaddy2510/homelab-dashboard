@@ -17,6 +17,7 @@ STATIC_DIR = BASE_DIR / "static"
 CONFIG_DIR = Path(os.environ.get("CONFIG_DIR", "/config"))
 SERVICES_FILE = CONFIG_DIR / "services.json"
 SETTINGS_FILE = CONFIG_DIR / "settings.json"
+PROXMOX_FILE = CONFIG_DIR / "proxmox.json"
 
 DEFAULT_PORTS = [22, 80, 443, 445, 5000, 8000, 8080, 8123, 9000, 9443]
 MAX_SCAN_HOSTS = int(os.environ.get("MAX_SCAN_HOSTS", "512"))
@@ -235,6 +236,99 @@ def delete_service(payload):
     return config
 
 
+def load_proxmox_config():
+    config = read_json_file(PROXMOX_FILE, {"servers": []})
+    if not isinstance(config, dict) or "error" in config:
+        return {"servers": []}
+    servers = config.get("servers", [])
+    return {"servers": servers if isinstance(servers, list) else []}
+
+
+def normalize_proxmox_server(payload):
+    name = str(payload.get("name", "")).strip()
+    url = str(payload.get("url", "")).strip().rstrip("/")
+    token_id = str(payload.get("token_id", "")).strip()
+    token_secret = str(payload.get("token_secret", "")).strip()
+    verify_ssl = payload.get("verify_ssl", True)
+
+    if not url:
+        raise ValueError("Proxmox URL is required.")
+    if urllib.parse.urlparse(url).scheme not in ("http", "https"):
+        url = f"https://{url}"
+    if not name:
+        name = urllib.parse.urlparse(url).hostname or "Proxmox"
+    if not token_id:
+        raise ValueError("Proxmox token ID is required.")
+    if not token_secret:
+        raise ValueError("Proxmox token secret is required.")
+
+    return {
+        "name": name,
+        "url": url,
+        "token_id": token_id,
+        "token_secret": token_secret,
+        "verify_ssl": str(verify_ssl).lower() == "true" if isinstance(verify_ssl, str) else bool(verify_ssl),
+    }
+
+
+def write_proxmox_config(config):
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    with PROXMOX_FILE.open("w", encoding="utf-8") as handle:
+        json.dump(config, handle, indent=2)
+        handle.write("\n")
+
+
+def proxmox_public_config():
+    config = load_proxmox_config()
+    return {
+        "servers": [
+            {
+                "name": server.get("name", ""),
+                "url": server.get("url", ""),
+                "token_id": server.get("token_id", ""),
+                "verify_ssl": server.get("verify_ssl", True),
+                "has_token_secret": bool(server.get("token_secret")),
+            }
+            for server in config.get("servers", [])
+        ]
+    }
+
+
+def add_proxmox_server(payload):
+    config = load_proxmox_config()
+    config.setdefault("servers", []).append(normalize_proxmox_server(payload))
+    write_proxmox_config(config)
+    return proxmox_public_config()
+
+
+def update_proxmox_server(payload):
+    config = load_proxmox_config()
+    index = int(payload.get("index"))
+    try:
+        existing = config.setdefault("servers", [])[index]
+    except (IndexError, TypeError):
+        raise ValueError("Proxmox server was not found.")
+
+    merged = dict(existing)
+    merged.update(payload)
+    if not str(payload.get("token_secret", "")).strip() and existing.get("token_secret"):
+        merged["token_secret"] = existing["token_secret"]
+    config["servers"][index] = normalize_proxmox_server(merged)
+    write_proxmox_config(config)
+    return proxmox_public_config()
+
+
+def delete_proxmox_server(payload):
+    config = load_proxmox_config()
+    index = int(payload.get("index"))
+    try:
+        del config.setdefault("servers", [])[index]
+    except (IndexError, TypeError):
+        raise ValueError("Proxmox server was not found.")
+    write_proxmox_config(config)
+    return proxmox_public_config()
+
+
 def parse_ports(raw):
     if not raw:
         return DEFAULT_PORTS
@@ -340,6 +434,10 @@ def run_discovery(cidr, ports, timeout):
 
 
 def proxmox_servers():
+    configured = load_proxmox_config().get("servers", [])
+    if configured:
+        return configured
+
     raw = os.environ.get("PROXMOX_SERVERS", "").strip()
     if raw:
         servers = json.loads(raw)
@@ -485,6 +583,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             json_response(self, load_settings())
             return
 
+        if parsed.path == "/api/proxmox/config":
+            json_response(self, proxmox_public_config())
+            return
+
         if parsed.path == "/api/health":
             json_response(self, {"ok": True, "version": "0.1.0"})
             return
@@ -536,6 +638,15 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 return
             if parsed.path == "/api/settings":
                 json_response(self, save_settings(payload), 200)
+                return
+            if parsed.path == "/api/proxmox/config":
+                json_response(self, add_proxmox_server(payload), 201)
+                return
+            if parsed.path == "/api/proxmox/config/update":
+                json_response(self, update_proxmox_server(payload), 200)
+                return
+            if parsed.path == "/api/proxmox/config/delete":
+                json_response(self, delete_proxmox_server(payload), 200)
                 return
             error_response(self, "Not found", 404)
         except Exception as exc:
