@@ -4,8 +4,8 @@ const state = {
   proxmoxConfig: { servers: [] },
   discoveryHosts: 0,
   proxmoxNodes: 0,
-  proxmoxNodeOptions: [],
-  selectedProxmoxKey: "",
+  proxmoxVms: 0,
+  proxmoxContainers: 0,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -35,6 +35,16 @@ function formatBytes(value) {
   return `${size.toFixed(size >= 10 || unit === 0 ? 0 : 1)} ${units[unit]}`;
 }
 
+function formatUptime(seconds) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "";
+  const days = Math.floor(seconds / 86400);
+  if (days > 0) return `${days}d`;
+  const hours = Math.floor(seconds / 3600);
+  if (hours > 0) return `${hours}h`;
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}m`;
+}
+
 function percent(value) {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(100, Math.round(value * 100)));
@@ -46,6 +56,11 @@ function firstNumber(...values) {
 
 function updateHostCount() {
   setText("#host-count", state.discoveryHosts + state.proxmoxNodes);
+}
+
+function updateQuickStats() {
+  setText("#quick-vms", state.proxmoxVms);
+  setText("#quick-containers", state.proxmoxContainers);
 }
 
 function iconText(service) {
@@ -256,6 +271,7 @@ function renderServices(config) {
     container.innerHTML = `<div class="empty">No services match this view.</div>`;
   }
   setText("#service-count", count);
+  setText("#quick-services", count);
   setText("#config-note", `${count} configured`);
 }
 
@@ -263,53 +279,32 @@ function renderProxmox(payload) {
   const container = $("#proxmox-grid");
   const nodes = payload?.nodes || [];
   const clusters = payload?.clusters || [{ name: "Proxmox", nodes }];
-  const select = $("#proxmox-node-select");
   state.proxmoxNodes = nodes.length;
+  state.proxmoxVms = nodes.reduce((total, node) => total + (Array.isArray(node.vms) ? node.vms.length : 0), 0);
+  state.proxmoxContainers = nodes.reduce(
+    (total, node) => total + (Array.isArray(node.containers) ? node.containers.length : 0),
+    0,
+  );
   setText("#node-count", nodes.length || "-");
   updateHostCount();
+  updateQuickStats();
 
   if (!nodes.length && !clusters.some((cluster) => cluster.error)) {
-    select.innerHTML = `<option>No nodes available</option>`;
     container.innerHTML = `<div class="empty">No Proxmox nodes returned.</div>`;
     return;
   }
 
-  state.proxmoxNodeOptions = clusters.flatMap((cluster, clusterIndex) =>
-    (cluster.nodes || []).map((node, nodeIndex) => ({
-      key: `${clusterIndex}:${nodeIndex}:${cluster.name}:${node.node}`,
-      label: `${cluster.name || "Proxmox"} / ${node.node || "Node"}`,
-      node,
-    })),
-  );
-
-  select.innerHTML = state.proxmoxNodeOptions
-    .map((option) => `<option value="${escapeHtml(option.key)}">${escapeHtml(option.label)}</option>`)
+  container.innerHTML = clusters
+    .map((cluster) => {
+      if (cluster.error) {
+        return `<div class="error">${escapeHtml(cluster.name)}: ${escapeHtml(cluster.error)}</div>`;
+      }
+      return (cluster.nodes || []).map((node) => renderProxmoxNode(node, cluster)).join("");
+    })
     .join("");
-
-  const hasSelected = state.proxmoxNodeOptions.some((option) => option.key === state.selectedProxmoxKey);
-  state.selectedProxmoxKey = hasSelected ? state.selectedProxmoxKey : state.proxmoxNodeOptions[0]?.key || "";
-  select.value = state.selectedProxmoxKey;
-
-  if (state.selectedProxmoxKey) {
-    select.disabled = false;
-    renderSelectedProxmoxNode();
-    return;
-  }
-
-  select.disabled = true;
-  select.innerHTML = `<option>No nodes available</option>`;
-  const errors = clusters.filter((cluster) => cluster.error);
-  container.innerHTML = errors.length
-    ? errors.map((cluster) => `<div class="error">${escapeHtml(cluster.name)}: ${escapeHtml(cluster.error)}</div>`).join("")
-    : `<div class="empty">No Proxmox nodes returned.</div>`;
 }
 
-function renderSelectedProxmoxNode() {
-  const option = state.proxmoxNodeOptions.find((item) => item.key === state.selectedProxmoxKey);
-  $("#proxmox-grid").innerHTML = option ? renderProxmoxNode(option.node) : `<div class="empty">Select a node.</div>`;
-}
-
-function renderProxmoxNode(node) {
+function renderProxmoxNode(node, cluster) {
       const detail = node.status_detail || {};
       const memoryUsed = firstNumber(detail.memory?.used, node.mem);
       const memoryTotal = firstNumber(detail.memory?.total, node.maxmem);
@@ -324,15 +319,18 @@ function renderProxmoxNode(node) {
         ? `<div class="node-warning">Detail API unavailable: ${escapeHtml(node.detail_error)}</div>`
         : "";
       return `
-        <article class="node-card">
-          <div class="node-top">
+        <article class="node-row">
+          <div class="node-main">
+            <div class="node-icon" aria-hidden="true">
+              <span></span><span></span>
+            </div>
             <div>
+              <div class="node-server">${escapeHtml(cluster?.name || node.server || "Proxmox")}</div>
               <strong>${escapeHtml(node.node || "Node")}</strong>
               <div class="host-meta">${vms} VMs / ${containers} CTs</div>
             </div>
-            <span class="badge ${node.status === "online" ? "" : "warn"}">${escapeHtml(node.status || "unknown")}</span>
           </div>
-          <div class="resource">
+          <div class="node-resources">
             <div class="resource-row">
               <span>CPU ${cpu}%</span>
               <div class="bar"><i style="--value:${cpu}%"></i></div>
@@ -346,7 +344,11 @@ function renderProxmoxNode(node) {
               <div class="bar"><i style="--value:${root}%"></i></div>
             </div>
           </div>
-          ${detailWarning}
+          <div class="node-actions">
+            <span class="badge ${node.status === "online" ? "" : "warn"}">${escapeHtml(node.status || "unknown")}</span>
+            <span class="uptime">${formatUptime(node.uptime || detail.uptime)}</span>
+          </div>
+          ${detailWarning ? `<div class="node-detail">${detailWarning}</div>` : ""}
         </article>
       `;
 }
@@ -357,6 +359,7 @@ function renderScan(payload) {
   state.discoveryHosts = hosts.length;
   updateHostCount();
   setText("#last-scan", `${hosts.length} hosts in ${Math.round(payload.duration_ms / 1000)}s`);
+  setText("#quick-last-scan", `${hosts.length} hosts`);
 
   if (!hosts.length) {
     container.innerHTML = `<div class="empty">No open ports found for this scan.</div>`;
@@ -598,10 +601,6 @@ $("#scan-form").addEventListener("submit", runScan);
 $("#refresh-config").addEventListener("click", loadConfig);
 $("#refresh-proxmox").addEventListener("click", loadProxmox);
 $("#save-settings").addEventListener("click", saveSettings);
-$("#proxmox-node-select").addEventListener("change", (event) => {
-  state.selectedProxmoxKey = event.target.value;
-  renderSelectedProxmoxNode();
-});
 
 ["#setting-theme", "#setting-accent", "#setting-panel-opacity", "#setting-background", "#setting-weather-location"].forEach((selector) => {
   $(selector).addEventListener("input", () => {

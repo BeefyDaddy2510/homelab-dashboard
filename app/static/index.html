@@ -42,13 +42,17 @@
             </div>
           </article>
 
-          <article class="panel proxmox-panel">
+          <article class="panel quick-panel">
             <div class="panel-title-row">
-              <span class="panel-label">Virtualization</span>
-              <button id="refresh-proxmox" class="small-button">Refresh</button>
+              <span class="panel-label">Quick Stats</span>
+              <span id="quick-status" class="badge">online</span>
             </div>
-            <select id="proxmox-node-select" class="node-select" aria-label="Select Proxmox node"></select>
-            <div id="proxmox-grid" class="node-grid"></div>
+            <div class="quick-grid">
+              <div><strong id="quick-services">0</strong><span>configured services</span></div>
+              <div><strong id="quick-vms">0</strong><span>virtual machines</span></div>
+              <div><strong id="quick-containers">0</strong><span>containers</span></div>
+              <div><strong id="quick-last-scan">Never</strong><span>last scan</span></div>
+            </div>
           </article>
 
           <article class="panel clock-panel">
@@ -63,6 +67,17 @@
             </div>
             <small id="api-status">Connecting</small>
           </article>
+        </section>
+
+        <section class="panel virtualization-section">
+          <div class="panel-title-row">
+            <div>
+              <span class="panel-label">Virtualization</span>
+              <h1>Proxmox Nodes</h1>
+            </div>
+            <button id="refresh-proxmox" class="small-button">Refresh</button>
+          </div>
+          <div id="proxmox-grid" class="node-grid"></div>
         </section>
 
         <section class="services-section">
